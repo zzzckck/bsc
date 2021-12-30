@@ -17,9 +17,12 @@
 package core
 
 import (
+	"strconv"
+
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -46,6 +49,8 @@ func NewStatePrefetcher(config *params.ChainConfig, chain *HeaderChain) *statePr
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and state trie nodes.
 func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, cfg *vm.Config, interruptCh <-chan struct{}) {
+	traceMsg := "statePrefetcher " + block.Header().Number.String()
+	defer debug.Handler.StartRegionAuto(traceMsg)()
 	var (
 		header = block.Header()
 		signer = types.MakeSigner(p.config, header.Number, header.Time)
@@ -55,6 +60,8 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func() {
+			traceMsg := "prefetchThread " + strconv.Itoa(i)
+			defer debug.Handler.StartRegionAuto(traceMsg)()
 			newStatedb := statedb.CopyDoPrefetch()
 			if !p.config.IsHertzfix(header.Number) {
 				newStatedb.EnableWriteOnSharedStorage()
