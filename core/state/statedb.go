@@ -268,6 +268,8 @@ func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness) 
 // StopPrefetcher terminates a running prefetcher and reports any leftover stats
 // from the gathered metrics.
 func (s *StateDB) StopPrefetcher() {
+	defer debug.Handler.StartRegionAuto("StopPrefetcher")()
+
 	if s.noTrie {
 		return
 	}
@@ -873,6 +875,7 @@ func (s *StateDB) GetRefund() uint64 {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
+	defer debug.Handler.StartRegionAuto("Finalise")()
 	addressesToPrefetch := make([]common.Address, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]

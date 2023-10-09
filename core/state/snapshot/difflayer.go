@@ -220,6 +220,7 @@ func (dl *diffLayer) Stale() bool {
 // Account directly retrieves the account associated with a particular hash in
 // the snapshot slim data format.
 func (dl *diffLayer) Account(hash common.Hash) (*types.SlimAccount, error) {
+	defer debug.Handler.StartRegionAuto("diffLayer Account")()
 	data, err := dl.AccountRLP(hash)
 	if err != nil {
 		return nil, err

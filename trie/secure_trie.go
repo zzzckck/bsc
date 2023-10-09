@@ -251,6 +251,7 @@ func (t *StateTrie) Witness() map[string]struct{} {
 // Once the trie is committed, it's not usable anymore. A new trie must
 // be created with new root and updated trie database for following usage
 func (t *StateTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet) {
+	defer debug.Handler.StartRegionAuto("StateTrie Commit")()
 	// Write all the pre-images to the actual disk database
 	if len(t.getSecKeyCache()) > 0 {
 		if t.preimages != nil {
@@ -269,6 +270,7 @@ func (t *StateTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet) {
 // Hash returns the root hash of StateTrie. It does not write to the
 // database and can be used even if the trie doesn't have one.
 func (t *StateTrie) Hash() common.Hash {
+	defer debug.Handler.StartRegionAuto("StateTrie.Hash")()
 	return t.trie.Hash()
 }
 
