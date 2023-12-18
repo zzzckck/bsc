@@ -17,10 +17,10 @@ const provider = new ethers.JsonRpcProvider(program.rpc)
 // data:,{"p":"bsc-20","op":"mint","tick":"bsci","amt":"1000"}
 // bsc-20: 6273632d3230
 let bsc20Hex = "6273632d3230"
+let fromTo = 0
+let fromToLength = 0 
+let fromToLengthBsc20 = 0 
 const main = async () => {
-    let fromTo = 0
-    let fromToLength = 0 
-    let fromToLengthBsc20 = 0 
     console.log("Find inscription txs count between", program.startNum, "and", program.endNum);
     for (let i = program.startNum; i < program.endNum; i++) {
         let txs = await provider.send("eth_getTransactionsByBlockNumber", [ethers.toQuantity(i)]);
