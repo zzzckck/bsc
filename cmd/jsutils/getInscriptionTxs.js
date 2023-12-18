@@ -25,6 +25,8 @@ const main = async () => {
     for (let i = program.startNum; i < program.endNum; i++) {
         let txs = await provider.send("eth_getTransactionsByBlockNumber", [ethers.toQuantity(i)]);
         let txsNum = txs.length
+        console.log("block", i, "txsNum", txsNum, "fromTo", fromTo, "fromToLength", fromToLength, "fromToLengthBsc20",fromToLengthBsc20);
+
         for (let j = 0; j < txsNum; j++) {
             let tx = txs[j]
             if (tx.from == tx.to) {
@@ -38,7 +40,7 @@ const main = async () => {
             }
         }
     }
-    console.log("fromTo", fromTo, "fromToLength", fromToLength, "fromToLengthBsc20",fromToLengthBsc20);
+    console.log("done, fromTo", fromTo, "fromToLength", fromToLength, "fromToLengthBsc20",fromToLengthBsc20);
 };
 
 main().then(() => process.exit(0))
