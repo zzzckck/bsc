@@ -794,8 +794,10 @@ func (h *handler) BroadcastBlock(block *types.Block, propagate bool) {
 		} else {
 			transfer = peers[:int(math.Sqrt(float64(len(peers))))]
 		}
-
+		log.Info("BroadcastBlock", "len(transfer)", len(transfer))
 		for _, peer := range transfer {
+			log.Info("BeforeAsyncSendNewBlock", "number", block.Number(), "hash", block.Hash(),
+				"len(block.Sidecars())", len(block.Sidecars()))
 			peer.AsyncSendNewBlock(block, td)
 		}
 

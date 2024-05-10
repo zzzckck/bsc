@@ -30,6 +30,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -544,6 +545,9 @@ func (b *Block) WithSidecars(sidecars BlobSidecars) *Block {
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
 	}
+	log.Info("WithSidecars", "number", b.Number(), "hash", b.Hash(),
+		"len(b.Sidecars())", len(b.Sidecars()), "len(sidecars)", len(sidecars))
+
 	if sidecars != nil {
 		block.sidecars = make(BlobSidecars, len(sidecars))
 		copy(block.sidecars, sidecars)

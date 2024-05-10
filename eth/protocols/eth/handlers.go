@@ -323,10 +323,10 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	}
 	ann.Block.ReceivedAt = msg.Time()
 	ann.Block.ReceivedFrom = peer
-
 	// Mark the peer as owning the block
 	peer.markBlock(ann.Block.Hash())
-
+	log.Info("handleNewBlock", "number", ann.Block.Number(), "hash", ann.Block.Hash(),
+		"len(ann.Sidecars)", len(ann.Sidecars))
 	return backend.Handle(peer, ann)
 }
 

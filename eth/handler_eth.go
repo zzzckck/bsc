@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 )
 
@@ -125,6 +126,8 @@ func (h *ethHandler) handleBlockBroadcast(peer *eth.Peer, packet *eth.NewBlockPa
 	block := packet.Block
 	td := packet.TD
 	sidecars := packet.Sidecars
+	log.Info("handleBlockBroadcast", "number", packet.Block.Number(), "hash", packet.Block.Hash(),
+		"len(sidecars)", len(sidecars))
 	if sidecars != nil {
 		block = block.WithSidecars(sidecars)
 	}
