@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -231,6 +232,13 @@ func (request *NewBlockPacket) sanityCheck() error {
 		return fmt.Errorf("too large block TD: bitlen %d", tdlen)
 	}
 
+	wanted := *request.Block.BlobGasUsed() / params.BlobTxBlobGasPerBlob
+	if wanted != uint64(len(request.Sidecars)) {
+		// errInvalidBody
+		return fmt.Errorf("sidecar payload invalid, BlobGasUsed:%d, len(Sidecars):%d",
+			request.Block.BlobGasUsed(), len(request.Sidecars))
+	}
+	// want := *header.BlobGasUsed / params.BlobTxBlobGasPerBlob; uint64(blobs) != want
 	if len(request.Sidecars) > 0 {
 		for _, sidecar := range request.Sidecars {
 			if err := sidecar.SanityCheck(request.Block.Number(), request.Block.Hash()); err != nil {

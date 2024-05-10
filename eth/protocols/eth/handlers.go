@@ -310,6 +310,8 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 
 	// Now that we have our packet, perform operations using the interface methods
 	if err := ann.sanityCheck(); err != nil {
+		log.Info("handleNewBlock", "err", err,
+			"peer", peer.String(), "name", peer.Name())
 		return err
 	}
 
@@ -326,7 +328,8 @@ func handleNewBlock(backend Backend, msg Decoder, peer *Peer) error {
 	// Mark the peer as owning the block
 	peer.markBlock(ann.Block.Hash())
 	log.Info("handleNewBlock", "number", ann.Block.Number(), "hash", ann.Block.Hash(),
-		"len(ann.Sidecars)", len(ann.Sidecars))
+		"len(ann.Sidecars)", len(ann.Sidecars),
+		"peer", peer.String(), "name", peer.Name())
 	return backend.Handle(peer, ann)
 }
 
