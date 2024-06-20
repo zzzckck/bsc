@@ -17,10 +17,13 @@
 package core
 
 import (
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -57,7 +60,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	txChan := make(chan []int, prefetchThread)
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
-		go func() {
+		go func(threadIndex int) {
 			newStatedb := statedb.CopyDoPrefetch()
 			if !p.config.IsHertzfix(header.Number) {
 				newStatedb.EnableWriteOnSharedStorage()
@@ -69,7 +72,9 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			for {
 				select {
 				case txIndexArray := <-txChan:
+					log.Info("Prefetch new TXsc", "thread", threadIndex, "len(txIndexArray)", len(txIndexArray))
 					for _, txIndex := range txIndexArray {
+						log.Info("Prefetch", "thread", threadIndex, "txIndex", txIndex)
 						tx := transactions[txIndex]
 						// Convert the transaction into an executable message and pre-cache its sender
 						msg, err := TransactionToMessage(tx, signer, header.BaseFee)
@@ -80,37 +85,49 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 						newStatedb.SetTxContext(tx.Hash(), txIndex)
 						precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 					}
+					log.Info("Prefetch new TXs done", "thread", threadIndex)
 
 				case <-interruptCh:
 					// If block precaching was interrupted, abort
 					return
 				}
 			}
-		}()
+		}(i)
 	}
 
 	// dispatch: by ordered-Group
-	group := make([][]int, 0)
-	groupMap := make(map[string]int)
+	txGroup := make([][]int, 0)
+	txGroupMap := make(map[common.Address]int) // address -> groupIndex
 	nextGroupIndex := 0
 	for txIndex, tx := range transactions {
-		to := tx.To().String()
-		groupIndex, ok := groupMap[to]
-		if ok {
-			group[groupIndex] = append(group[groupIndex], txIndex)
+		var toAddr common.Address
+		if tx.To() == nil {
+			// contract create,
+			fromAddr, _ := types.Sender(signer, tx)
+			toAddr = crypto.CreateAddress(fromAddr, tx.Nonce())
+			log.Info("Prefetch contract create", "txHash", tx.Hash(), "fromAddr", fromAddr, "newAddress", toAddr)
+		} else {
+			toAddr = *tx.To()
+		}
+		if groupIndex, ok := txGroupMap[toAddr]; ok {
+			log.Info("Prefetch already in group", "txHash", tx.Hash(), "txIndex", txIndex, "groupIndex", groupIndex)
+			// already in a group, append the txIndex
+			txGroup[groupIndex] = append(txGroup[groupIndex], txIndex)
 			continue
 		}
-		groupMap[to] = nextGroupIndex
+		// new dispatch group
+		log.Info("Prefetch new dispatch group", "txHash", tx.Hash(), "txIndex", txIndex, "nextGroupIndex", nextGroupIndex)
+		txGroupMap[toAddr] = nextGroupIndex
+		txGroup = append(txGroup, []int{txIndex})
 		nextGroupIndex++
 	}
 
 	for i := 0; i < nextGroupIndex; i++ {
 		select {
-		case txChan <- group[i]:
+		case txChan <- txGroup[i]:
 		case <-interruptCh:
 			return
 		}
-
 	}
 	//  priority 1: put same ToAddr in same routine, same contract may have dependency
 	//  priority 2: put same FromAddr in same route, rare case?, no need
