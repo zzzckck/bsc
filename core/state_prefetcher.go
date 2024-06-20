@@ -54,7 +54,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		signer = types.MakeSigner(p.config, header.Number, header.Time)
 	)
 	transactions := block.Transactions()
-	txChan := make(chan int, prefetchThread)
+	txChan := make(chan []int, prefetchThread)
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func() {
@@ -68,16 +68,18 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			// Iterate over and process the individual transactions
 			for {
 				select {
-				case txIndex := <-txChan:
-					tx := transactions[txIndex]
-					// Convert the transaction into an executable message and pre-cache its sender
-					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
-					msg.SkipAccountChecks = true
-					if err != nil {
-						return // Also invalid block, bail out
+				case txIndexArray := <-txChan:
+					for _, txIndex := range txIndexArray {
+						tx := transactions[txIndex]
+						// Convert the transaction into an executable message and pre-cache its sender
+						msg, err := TransactionToMessage(tx, signer, header.BaseFee)
+						msg.SkipAccountChecks = true
+						if err != nil {
+							return // Also invalid block, bail out
+						}
+						newStatedb.SetTxContext(tx.Hash(), txIndex)
+						precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 					}
-					newStatedb.SetTxContext(tx.Hash(), txIndex)
-					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 
 				case <-interruptCh:
 					// If block precaching was interrupted, abort
@@ -87,14 +89,42 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		}()
 	}
 
-	// it should be in a separate goroutine, to avoid blocking the critical path.
-	for i := 0; i < len(transactions); i++ {
+	// dispatch: by ordered-Group
+	group := make([][]int, 0)
+	groupMap := make(map[string]int)
+	nextGroupIndex := 0
+	for txIndex, tx := range transactions {
+		to := tx.To().String()
+		groupIndex, ok := groupMap[to]
+		if ok {
+			group[groupIndex] = append(group[groupIndex], txIndex)
+			continue
+		}
+		groupMap[to] = nextGroupIndex
+		nextGroupIndex++
+	}
+
+	for i := 0; i < nextGroupIndex; i++ {
 		select {
-		case txChan <- i:
+		case txChan <- group[i]:
 		case <-interruptCh:
 			return
 		}
+
 	}
+	//  priority 1: put same ToAddr in same routine, same contract may have dependency
+	//  priority 2: put same FromAddr in same route, rare case?, no need
+	//  priority 3: any
+	// it should be in a separate goroutine, to avoid blocking the critical path.
+	/*
+		for i := 0; i < len(transactions); i++ {
+			select {
+			case txChan <- i:
+			case <-interruptCh:
+				return
+			}
+		}
+	*/
 }
 
 // PrefetchMining processes the state changes according to the Ethereum rules by running
