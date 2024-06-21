@@ -119,7 +119,7 @@ const (
 	maxTimeFutureBlocks = 30
 	TriesInMemory       = 128
 	maxBeyondBlocks     = 2048
-	prefetchTxNumber    = 100
+	prefetchTxNumber    = 5
 
 	diffLayerFreezerRecheckInterval = 3 * time.Second
 	maxDiffForkDist                 = 11 // Maximum allowed backward distance from the chain head

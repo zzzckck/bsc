@@ -27,7 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-const prefetchThread = 3
+const prefetchThread = 4
 const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher, which blindly executes a block on top
@@ -58,6 +58,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	)
 	transactions := block.Transactions()
 	txChan := make(chan []int, prefetchThread)
+	dispatched := make(chan struct{})
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func(threadIndex int) {
@@ -86,6 +87,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 						precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 					}
 					log.Info("Prefetch new TXs done", "thread", threadIndex)
+					// if there is no more groupTx, get unPrefetched TX to execute.
 
 				case <-interruptCh:
 					// If block precaching was interrupted, abort
@@ -128,7 +130,12 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		case <-interruptCh:
 			return
 		}
+		if i == nextGroupIndex-1 {
+			// all dispatched
+			close(dispatched)
+		}
 	}
+
 	//  priority 1: put same ToAddr in same routine, same contract may have dependency
 	//  priority 2: put same FromAddr in same route, rare case?, no need
 	//  priority 3: any
