@@ -17,8 +17,6 @@
 package core
 
 import (
-	"sync/atomic"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -51,11 +49,18 @@ func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine conse
 }
 
 type prefetchTxGroup struct {
-	id       int
-	txs      []int
-	curIndex atomic.Int32
-	done     bool
+	id  int
+	txs []int
+	// curIndex atomic.Int32
+	done bool
 }
+
+// 1.dispatch the first $Stage1Num TXs first, they have the highest priority
+// 2.dispatch the txGroups, splited by txIndex(prefetchThread*8?), to avoid big txGap
+// 3.dispatch txGroup with same ToAddress to same thread
+// 4.EOA transfer, get the address list on TXs iterate, and GetObject would be fine.
+// 5.stage 2: idle thread? to preempt tasks from the busy thread??
+//            easiest way: preempt the un-prefetch txGroup and run
 
 // Prefetch processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb, but any changes are discarded. The
@@ -66,9 +71,10 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		signer = types.MakeSigner(p.config, header.Number, header.Time)
 	)
 	transactions := block.Transactions()
+	log.Info("Prefetch txGroup", "block", header.Number, "len(transactions)", len(transactions))
 	txChan := make(chan int, prefetchThread)
 	txGroupChan := make(chan prefetchTxGroup, prefetchThread)
-	txGroupDoneChan := make(chan int, prefetchThread)
+	// txGroupDoneChan := make(chan int, prefetchThread)
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func(threadIndex int) {
@@ -84,10 +90,10 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 				select {
 				case txGroup := <-txGroupChan:
 					log.Info("Prefetch txGroup", "thread", threadIndex, "txGroup.id", txGroup.id, "len(txGroup.txs)", len(txGroup.txs))
-					for i, txIndex := range txGroup.txs {
+					for _, txIndex := range txGroup.txs {
 						log.Info("Prefetch txGroup", "thread", threadIndex, "txIndex", txIndex)
 						tx := transactions[txIndex]
-						txGroup.curIndex.Store(int32(i))
+						// txGroup.curIndex.Store(int32(i))
 						// Convert the transaction into an executable message and pre-cache its sender
 						msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 						msg.SkipAccountChecks = true
@@ -142,50 +148,51 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		// new dispatch group
 		log.Info("Prefetch new dispatch group", "txHash", tx.Hash(), "txIndex", txIndex, "nextGroupIndex", nextGroupIndex)
 		txGroupMap[toAddr] = nextGroupIndex
-		txGroupAll = append(txGroupAll, prefetchTxGroup{id: nextGroupIndex, txs: []int{txIndex}, curTxIndex: -1})
+		txGroupAll = append(txGroupAll, prefetchTxGroup{id: nextGroupIndex, txs: []int{txIndex}})
 		nextGroupIndex++
 	}
-	// 2.start a routine to run stage 2, tx level prefetch after the group level prefetch
-	go func() {
-		txGroupDoneNum := 0
-		txPrefetchedMap := make(map[int]struct{})
-		for {
-			select {
-			case txGroupIndex := <-txGroupDoneChan:
-				txGroupDoneNum++
-				txGroupAll[txGroupIndex].done = true
-				if txGroupDoneNum+prefetchThread <= len(txGroupAll) {
-					// busy with group level prefetch, stage 2 dispatch not ready
-					continue
-				} else if txGroupDoneNum == len(txGroupAll) {
-					// all txGroup done, exit stage 2
-					return
-				} else {
-					// stage 2 ready
-					// 1.get the first running txGroup
-					for _, txGroup := range txGroupAll {
-						if txGroup.done == true {
-							continue
-						}
-						// 2.get the first tx to be prefetched
-						for start := txGroup.curIndex.Load() + 1; start < int32(len(txGroup.txs)); start++ {
-							txIndex := txGroup.txs[start]
-							if _, ok := txPrefetchedMap[txIndex]; ok {
+	/*
+		// 2.start a routine to run stage 2, tx level prefetch after the group level prefetch
+		go func() {
+			txGroupDoneNum := 0
+			txPrefetchedMap := make(map[int]struct{})
+			for {
+				select {
+				case txGroupIndex := <-txGroupDoneChan:
+					txGroupDoneNum++
+					txGroupAll[txGroupIndex].done = true
+					if txGroupDoneNum+prefetchThread <= len(txGroupAll) {
+						// busy with group level prefetch, stage 2 dispatch not ready
+						continue
+					} else if txGroupDoneNum == len(txGroupAll) {
+						// all txGroup done, exit stage 2
+						return
+					} else {
+						// stage 2 ready
+						// 1.get the first running txGroup
+						for _, txGroup := range txGroupAll {
+							if txGroup.done == true {
 								continue
 							}
-							txPrefetchedMap[txIndex] = struct{}{}
-							txChan <- txIndex
-							break
+							// 2.get the first tx to be prefetched
+							for start := txGroup.curIndex.Load() + 1; start < int32(len(txGroup.txs)); start++ {
+								txIndex := txGroup.txs[start]
+								if _, ok := txPrefetchedMap[txIndex]; ok {
+									continue
+								}
+								txPrefetchedMap[txIndex] = struct{}{}
+								txChan <- txIndex
+								break
+							}
 						}
 					}
+
+				case <-interruptCh:
+					return
 				}
-
-			case <-interruptCh:
-				return
 			}
-		}
-	}()
-
+		}()
+	*/
 	// 3.dispatch based on the txGroupAll
 	for i := 0; i < nextGroupIndex; i++ {
 		select {
@@ -194,12 +201,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			return
 		}
 	}
-	// 3.wait and update the prefetch status,
-	//
 
-	//  priority 1: put same ToAddr in same routine, same contract may have dependency
-	//  priority 2: put same FromAddr in same route, rare case?, no need
-	//  priority 3: any
 	// it should be in a separate goroutine, to avoid blocking the critical path.
 	/*
 		for i := 0; i < len(transactions); i++ {
