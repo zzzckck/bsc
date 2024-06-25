@@ -28,6 +28,7 @@ import (
 )
 
 const prefetchThread = 4
+const startupTxNum = prefetchThread
 const checkInterval = 10
 
 // statePrefetcher is a basic Prefetcher, which blindly executes a block on top
@@ -55,10 +56,10 @@ type prefetchTxGroup struct {
 	done bool
 }
 
-// 1.dispatch the first $Stage1Num TXs first, they have the highest priority
-// 2.dispatch the txGroups, splited by txIndex(prefetchThread*8?), to avoid big txGap
-// 3.dispatch txGroup with same ToAddress to same thread
-// 4.EOA transfer, get the address list on TXs iterate, and GetObject would be fine.
+// 1.dispatch the first $startupTxNum TXs first, they have the highest priority
+// 2.filter out EOA transfer, get the address list on TXs iterate, and GetObject would be fine.
+// 3.static dispatch txGroup with same ToAddress to same thread
+// 4.run prefetch routine, stage 1
 // 5.stage 2: idle thread? to preempt tasks from the busy thread??
 //            easiest way: preempt the un-prefetch txGroup and run
 
@@ -126,6 +127,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	}
 
 	txGroupAll := make([]prefetchTxGroup, 0)
+	eoaAddrs := make(map[common.Address]struct{})
 	txGroupMap := make(map[common.Address]int) // address -> groupIndex
 	nextGroupIndex := 0
 	// 1.iterate the transactions to get the txGroupAll
@@ -139,6 +141,18 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		} else {
 			toAddr = *tx.To()
 		}
+		if len(tx.Data()) == 0 {
+			fromAddr, _ := types.Sender(signer, tx)
+			eoaAddrs[fromAddr] = struct{}{}
+			eoaAddrs[toAddr] = struct{}{}
+			continue
+		}
+
+		if txIndex < startupTxNum {
+			txGroupAll = append(txGroupAll, prefetchTxGroup{id: nextGroupIndex, txs: []int{txIndex}})
+			nextGroupIndex++
+		}
+
 		if groupIndex, ok := txGroupMap[toAddr]; ok {
 			log.Info("Prefetch already in group", "txHash", tx.Hash(), "txIndex", txIndex, "groupIndex", groupIndex)
 			// already in a group, append the txIndex
