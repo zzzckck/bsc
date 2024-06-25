@@ -17,6 +17,8 @@
 package core
 
 import (
+	"sync/atomic"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -48,6 +50,13 @@ func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine conse
 	}
 }
 
+type prefetchTxGroup struct {
+	id       int
+	txs      []int
+	curIndex atomic.Int32
+	done     bool
+}
+
 // Prefetch processes the state changes according to the Ethereum rules by running
 // the transaction messages using the statedb, but any changes are discarded. The
 // only goal is to pre-cache transaction signatures and state trie nodes.
@@ -57,8 +66,9 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		signer = types.MakeSigner(p.config, header.Number, header.Time)
 	)
 	transactions := block.Transactions()
-	txChan := make(chan []int, prefetchThread)
-	dispatched := make(chan struct{})
+	txChan := make(chan int, prefetchThread)
+	txGroupChan := make(chan prefetchTxGroup, prefetchThread)
+	txGroupDoneChan := make(chan int, prefetchThread)
 	// No need to execute the first batch, since the main processor will do it.
 	for i := 0; i < prefetchThread; i++ {
 		go func(threadIndex int) {
@@ -72,11 +82,12 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			// Iterate over and process the individual transactions
 			for {
 				select {
-				case txIndexArray := <-txChan:
-					log.Info("Prefetch new TXsc", "thread", threadIndex, "len(txIndexArray)", len(txIndexArray))
-					for _, txIndex := range txIndexArray {
-						log.Info("Prefetch", "thread", threadIndex, "txIndex", txIndex)
+				case txGroup := <-txGroupChan:
+					log.Info("Prefetch txGroup", "thread", threadIndex, "txGroup.id", txGroup.id, "len(txGroup.txs)", len(txGroup.txs))
+					for i, txIndex := range txGroup.txs {
+						log.Info("Prefetch txGroup", "thread", threadIndex, "txIndex", txIndex)
 						tx := transactions[txIndex]
+						txGroup.curIndex.Store(int32(i))
 						// Convert the transaction into an executable message and pre-cache its sender
 						msg, err := TransactionToMessage(tx, signer, header.BaseFee)
 						msg.SkipAccountChecks = true
@@ -86,9 +97,20 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 						newStatedb.SetTxContext(tx.Hash(), txIndex)
 						precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
 					}
-					log.Info("Prefetch new TXs done", "thread", threadIndex)
-					// if there is no more groupTx, get unPrefetched TX to execute.
+					log.Info("Prefetch txGroup done", "thread", threadIndex)
 
+				case txIndex := <-txChan:
+					log.Info("Prefetch tx", "thread", threadIndex, "txIndex", txIndex)
+					tx := transactions[txIndex]
+					// Convert the transaction into an executable message and pre-cache its sender
+					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
+					msg.SkipAccountChecks = true
+					if err != nil {
+						return // Also invalid block, bail out
+					}
+					newStatedb.SetTxContext(tx.Hash(), txIndex)
+					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+					log.Info("Prefetch tx done", "thread", threadIndex)
 				case <-interruptCh:
 					// If block precaching was interrupted, abort
 					return
@@ -97,10 +119,10 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		}(i)
 	}
 
-	// dispatch: by ordered-Group
-	txGroup := make([][]int, 0)
+	txGroupAll := make([]prefetchTxGroup, 0)
 	txGroupMap := make(map[common.Address]int) // address -> groupIndex
 	nextGroupIndex := 0
+	// 1.iterate the transactions to get the txGroupAll
 	for txIndex, tx := range transactions {
 		var toAddr common.Address
 		if tx.To() == nil {
@@ -114,27 +136,66 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		if groupIndex, ok := txGroupMap[toAddr]; ok {
 			log.Info("Prefetch already in group", "txHash", tx.Hash(), "txIndex", txIndex, "groupIndex", groupIndex)
 			// already in a group, append the txIndex
-			txGroup[groupIndex] = append(txGroup[groupIndex], txIndex)
+			txGroupAll[groupIndex].txs = append(txGroupAll[groupIndex].txs, txIndex)
 			continue
 		}
 		// new dispatch group
 		log.Info("Prefetch new dispatch group", "txHash", tx.Hash(), "txIndex", txIndex, "nextGroupIndex", nextGroupIndex)
 		txGroupMap[toAddr] = nextGroupIndex
-		txGroup = append(txGroup, []int{txIndex})
+		txGroupAll = append(txGroupAll, prefetchTxGroup{id: nextGroupIndex, txs: []int{txIndex}, curTxIndex: -1})
 		nextGroupIndex++
 	}
+	// 2.start a routine to run stage 2, tx level prefetch after the group level prefetch
+	go func() {
+		txGroupDoneNum := 0
+		txPrefetchedMap := make(map[int]struct{})
+		for {
+			select {
+			case txGroupIndex := <-txGroupDoneChan:
+				txGroupDoneNum++
+				txGroupAll[txGroupIndex].done = true
+				if txGroupDoneNum+prefetchThread <= len(txGroupAll) {
+					// busy with group level prefetch, stage 2 dispatch not ready
+					continue
+				} else if txGroupDoneNum == len(txGroupAll) {
+					// all txGroup done, exit stage 2
+					return
+				} else {
+					// stage 2 ready
+					// 1.get the first running txGroup
+					for _, txGroup := range txGroupAll {
+						if txGroup.done == true {
+							continue
+						}
+						// 2.get the first tx to be prefetched
+						for start := txGroup.curIndex.Load() + 1; start < int32(len(txGroup.txs)); start++ {
+							txIndex := txGroup.txs[start]
+							if _, ok := txPrefetchedMap[txIndex]; ok {
+								continue
+							}
+							txPrefetchedMap[txIndex] = struct{}{}
+							txChan <- txIndex
+							break
+						}
+					}
+				}
 
+			case <-interruptCh:
+				return
+			}
+		}
+	}()
+
+	// 3.dispatch based on the txGroupAll
 	for i := 0; i < nextGroupIndex; i++ {
 		select {
-		case txChan <- txGroup[i]:
+		case txGroupChan <- txGroupAll[i]:
 		case <-interruptCh:
 			return
 		}
-		if i == nextGroupIndex-1 {
-			// all dispatched
-			close(dispatched)
-		}
 	}
+	// 3.wait and update the prefetch status,
+	//
 
 	//  priority 1: put same ToAddr in same routine, same contract may have dependency
 	//  priority 2: put same FromAddr in same route, rare case?, no need
