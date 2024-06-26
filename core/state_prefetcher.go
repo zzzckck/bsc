@@ -104,11 +104,11 @@ func (p *statePrefetcher) init(block *types.Block, statedb *state.StateDB, cfg *
 				default:
 				}
 				atomic.StoreInt32(&txReq.taken, 1)
-				log.Info("Prefetch tx stage 1", "thread", slotIndex, "txIndex", txReq.txIndex)
+				log.Debug("Prefetch tx stage 1", "thread", slotIndex, "txIndex", txReq.txIndex)
 				if txReq.eoaType {
 					newStatedb.Exist(txReq.from)
 					newStatedb.Exist(txReq.to)
-					log.Info("Prefetch tx stage 1 done, eoaType", "thread", slotIndex, "txIndex", txReq.txIndex)
+					log.Debug("Prefetch tx stage 1 done, eoaType", "thread", slotIndex, "txIndex", txReq.txIndex)
 					continue
 				}
 				// Convert the transaction into an executable message and pre-cache its sender
@@ -120,7 +120,7 @@ func (p *statePrefetcher) init(block *types.Block, statedb *state.StateDB, cfg *
 				}
 				newStatedb.SetTxContext(txReq.tx.Hash(), txReq.txIndex)
 				precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
-				log.Info("Prefetch tx stage 1 done", "thread", slotIndex, "txIndex", txReq.txIndex)
+				log.Debug("Prefetch tx stage 1 done", "thread", slotIndex, "txIndex", txReq.txIndex)
 			}
 
 			// stage 2: curSlot.txReqs are all executed
@@ -132,11 +132,11 @@ func (p *statePrefetcher) init(block *types.Block, statedb *state.StateDB, cfg *
 				default:
 				}
 				if atomic.CompareAndSwapInt32(&txReq.taken, 0, 1) {
-					log.Info("Prefetch tx stage 2", "thread", slotIndex, "txIndex", txReq.txIndex)
+					log.Debug("Prefetch tx stage 2", "thread", slotIndex, "txIndex", txReq.txIndex)
 					if txReq.eoaType {
 						newStatedb.Exist(txReq.from)
 						newStatedb.Exist(txReq.to)
-						log.Info("Prefetch tx stage 2 done, eoaType", "thread", slotIndex, "txIndex", txReq.txIndex)
+						log.Debug("Prefetch tx stage 2 done, eoaType", "thread", slotIndex, "txIndex", txReq.txIndex)
 						continue
 					}
 					// Convert the transaction into an executable message and pre-cache its sender
@@ -148,7 +148,7 @@ func (p *statePrefetcher) init(block *types.Block, statedb *state.StateDB, cfg *
 					}
 					newStatedb.SetTxContext(txReq.tx.Hash(), txReq.txIndex)
 					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
-					log.Info("Prefetch tx stage 2 done, not-eoaType", "thread", slotIndex, "txIndex", txReq.txIndex)
+					log.Debug("Prefetch tx stage 2 done, not-eoaType", "thread", slotIndex, "txIndex", txReq.txIndex)
 				}
 			}
 		}(i)
@@ -180,7 +180,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		signer = types.MakeSigner(p.config, header.Number, header.Time)
 	)
 	transactions := block.Transactions()
-	log.Info("Prefetch txGroup", "block", header.Number, "len(transactions)", len(transactions))
+	log.Debug("Prefetch", "block", header.Number, "len(transactions)", len(transactions))
 	// 1.init
 	p.init(block, statedb, cfg, interruptCh)
 	// 2.do static dispatch
@@ -191,7 +191,7 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		if tx.To() == nil {
 			// contract create,
 			toAddr = crypto.CreateAddress(fromAddr, tx.Nonce())
-			log.Info("Prefetch contract create", "txHash", tx.Hash(), "fromAddr", fromAddr, "newAddress", toAddr)
+			log.Debug("Prefetch contract create", "txHash", tx.Hash(), "fromAddr", fromAddr, "newAddress", toAddr)
 		} else {
 			toAddr = *tx.To()
 		}
