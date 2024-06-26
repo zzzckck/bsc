@@ -17,6 +17,8 @@
 package core
 
 import (
+	"sync/atomic"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -31,13 +33,30 @@ const prefetchThread = 4
 const startupTxNum = prefetchThread
 const checkInterval = 10
 
+type prefetchTxRequest struct {
+	slotIndex int
+	txIndex   int
+	tx        *types.Transaction
+	to        common.Address // from      common.Address
+	taken     int32          // false: has not been executed yet. true: executed
+	eoaType   bool           // EOA account don't need to invoke EVM
+}
+
+type prefetchSlot struct {
+	pendingTxReqList []*prefetchTxRequest
+	wakeUpChan       chan struct{}
+	noneEOATxs       int
+}
+
 // statePrefetcher is a basic Prefetcher, which blindly executes a block on top
 // of an arbitrary state with the goal of prefetching potentially useful state
 // data from disk before the main block processor start executing.
 type statePrefetcher struct {
-	config *params.ChainConfig // Chain configuration options
-	bc     *BlockChain         // Canonical block chain
-	engine consensus.Engine    // Consensus engine used for block rewards
+	config    *params.ChainConfig // Chain configuration options
+	bc        *BlockChain         // Canonical block chain
+	engine    consensus.Engine    // Consensus engine used for block rewards
+	slots     []*prefetchSlot     // each slot represent a prefetch thread
+	allTxReqs []*prefetchTxRequest
 }
 
 // NewStatePrefetcher initialises a new statePrefetcher.
@@ -49,12 +68,12 @@ func NewStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine conse
 	}
 }
 
-type prefetchTxGroup struct {
-	id  int
-	txs []int
-	// curIndex atomic.Int32
-	done bool
-}
+// Benefits of StaticDispatch:
+//
+//	** try best to make Txs with same From() in same slot
+//	** reduce IPC cost by dispatch in Unit
+//	** make sure same From in same slot
+//	** try to make it balanced, queue to the most hungry slot for new Address
 
 // 1.dispatch the first $startupTxNum TXs first, they have the highest priority
 // 2.filter out EOA transfer, get the address list on TXs iterate, and GetObject would be fine.
@@ -73,12 +92,15 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 	)
 	transactions := block.Transactions()
 	log.Info("Prefetch txGroup", "block", header.Number, "len(transactions)", len(transactions))
-	txChan := make(chan int, prefetchThread)
-	txGroupChan := make(chan prefetchTxGroup, prefetchThread)
-	// txGroupDoneChan := make(chan int, prefetchThread)
-	// No need to execute the first batch, since the main processor will do it.
+	// 1.start the prefetch threads
+	p.slots = make([]*prefetchSlot, prefetchThread)
 	for i := 0; i < prefetchThread; i++ {
-		go func(threadIndex int) {
+		p.slots[i] = &prefetchSlot{
+			wakeUpChan: make(chan struct{}, 1),
+		}
+		// start the primary slot's goroutine
+		go func(slotIndex int) {
+			curSlot := p.slots[slotIndex]
 			newStatedb := statedb.CopyDoPrefetch()
 			if !p.config.IsHertzfix(header.Number) {
 				newStatedb.EnableWriteOnSharedStorage()
@@ -89,49 +111,61 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 			// Iterate over and process the individual transactions
 			for {
 				select {
-				case txGroup := <-txGroupChan:
-					log.Info("Prefetch txGroup", "thread", threadIndex, "txGroup.id", txGroup.id, "len(txGroup.txs)", len(txGroup.txs))
-					for _, txIndex := range txGroup.txs {
-						log.Info("Prefetch txGroup", "thread", threadIndex, "txIndex", txIndex)
-						tx := transactions[txIndex]
-						// txGroup.curIndex.Store(int32(i))
-						// Convert the transaction into an executable message and pre-cache its sender
-						msg, err := TransactionToMessage(tx, signer, header.BaseFee)
-						msg.SkipAccountChecks = true
-						if err != nil {
-							return // Also invalid block, bail out
-						}
-						newStatedb.SetTxContext(tx.Hash(), txIndex)
-						precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+				case <-interruptCh:
+					return
+				case <-curSlot.wakeUpChan:
+				}
+				// stage 1:
+				for _, txReq := range curSlot.pendingTxReqList {
+					select {
+					case <-interruptCh:
+						// If block precaching was interrupted, abort
+						return
+					default:
 					}
-					log.Info("Prefetch txGroup done", "thread", threadIndex)
-
-				case txIndex := <-txChan:
-					log.Info("Prefetch tx", "thread", threadIndex, "txIndex", txIndex)
-					tx := transactions[txIndex]
+					atomic.StoreInt32(&txReq.taken, 1)
+					log.Info("Prefetch tx", "thread", slotIndex, "txIndex", txReq.txIndex)
 					// Convert the transaction into an executable message and pre-cache its sender
-					msg, err := TransactionToMessage(tx, signer, header.BaseFee)
+					msg, err := TransactionToMessage(txReq.tx, signer, header.BaseFee)
 					msg.SkipAccountChecks = true
 					if err != nil {
+						log.Warn("TransactionToMessage", "error", err)
 						return // Also invalid block, bail out
 					}
-					newStatedb.SetTxContext(tx.Hash(), txIndex)
+					newStatedb.SetTxContext(txReq.tx.Hash(), txReq.txIndex)
 					precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
-					log.Info("Prefetch tx done", "thread", threadIndex)
-				case <-interruptCh:
-					// If block precaching was interrupted, abort
-					return
+					log.Info("Prefetch tx done", "thread", slotIndex)
+				}
+
+				// stage 2: txReq in this Slot have all been executed, try preempt one from other slot.
+				// as long as the TxReq is runnable, we steal it, mark it as stolen
+				for _, txReq := range p.allTxReqs {
+					select {
+					case <-interruptCh:
+						// If block precaching was interrupted, abort
+						return
+					default:
+					}
+					if atomic.CompareAndSwapInt32(&txReq.taken, 0, 1) {
+						// Convert the transaction into an executable message and pre-cache its sender
+						msg, err := TransactionToMessage(txReq.tx, signer, header.BaseFee)
+						msg.SkipAccountChecks = true
+						if err != nil {
+							log.Warn("TransactionToMessage", "error", err)
+							return // Also invalid block, bail out
+						}
+						newStatedb.SetTxContext(txReq.tx.Hash(), txReq.txIndex)
+						precacheTransaction(msg, p.config, gaspool, newStatedb, header, evm)
+						log.Info("Prefetch tx done", "thread", slotIndex)
+					}
 				}
 			}
 		}(i)
 	}
 
-	txGroupAll := make([]prefetchTxGroup, 0)
-	eoaAddrs := make(map[common.Address]struct{})
-	txGroupMap := make(map[common.Address]int) // address -> groupIndex
-	nextGroupIndex := 0
-	// 1.iterate the transactions to get the txGroupAll
-	for txIndex, tx := range transactions {
+	// 2.do static dispatch
+	toSlotMap := make(map[common.Address]int, 100)
+	for i, tx := range transactions {
 		var toAddr common.Address
 		if tx.To() == nil {
 			// contract create,
@@ -141,91 +175,62 @@ func (p *statePrefetcher) Prefetch(block *types.Block, statedb *state.StateDB, c
 		} else {
 			toAddr = *tx.To()
 		}
+		txReq := &prefetchTxRequest{
+			txIndex: i,
+			tx:      tx,
+			to:      toAddr,
+			taken:   0,
+			eoaType: false,
+		}
+		p.allTxReqs = append(p.allTxReqs, txReq)
 		if len(tx.Data()) == 0 {
-			fromAddr, _ := types.Sender(signer, tx)
-			eoaAddrs[fromAddr] = struct{}{}
-			eoaAddrs[toAddr] = struct{}{}
-			continue
-		}
-
-		if txIndex < startupTxNum {
-			txGroupAll = append(txGroupAll, prefetchTxGroup{id: nextGroupIndex, txs: []int{txIndex}})
-			nextGroupIndex++
-		}
-
-		if groupIndex, ok := txGroupMap[toAddr]; ok {
-			log.Info("Prefetch already in group", "txHash", tx.Hash(), "txIndex", txIndex, "groupIndex", groupIndex)
-			// already in a group, append the txIndex
-			txGroupAll[groupIndex].txs = append(txGroupAll[groupIndex].txs, txIndex)
-			continue
-		}
-		// new dispatch group
-		log.Info("Prefetch new dispatch group", "txHash", tx.Hash(), "txIndex", txIndex, "nextGroupIndex", nextGroupIndex)
-		txGroupMap[toAddr] = nextGroupIndex
-		txGroupAll = append(txGroupAll, prefetchTxGroup{id: nextGroupIndex, txs: []int{txIndex}})
-		nextGroupIndex++
-	}
-	/*
-		// 2.start a routine to run stage 2, tx level prefetch after the group level prefetch
-		go func() {
-			txGroupDoneNum := 0
-			txPrefetchedMap := make(map[int]struct{})
-			for {
-				select {
-				case txGroupIndex := <-txGroupDoneChan:
-					txGroupDoneNum++
-					txGroupAll[txGroupIndex].done = true
-					if txGroupDoneNum+prefetchThread <= len(txGroupAll) {
-						// busy with group level prefetch, stage 2 dispatch not ready
-						continue
-					} else if txGroupDoneNum == len(txGroupAll) {
-						// all txGroup done, exit stage 2
-						return
-					} else {
-						// stage 2 ready
-						// 1.get the first running txGroup
-						for _, txGroup := range txGroupAll {
-							if txGroup.done == true {
-								continue
-							}
-							// 2.get the first tx to be prefetched
-							for start := txGroup.curIndex.Load() + 1; start < int32(len(txGroup.txs)); start++ {
-								txIndex := txGroup.txs[start]
-								if _, ok := txPrefetchedMap[txIndex]; ok {
-									continue
-								}
-								txPrefetchedMap[txIndex] = struct{}{}
-								txChan <- txIndex
-								break
-							}
-						}
-					}
-
-				case <-interruptCh:
-					return
-				}
-			}
-		}()
-	*/
-	// 3.dispatch based on the txGroupAll
-	for i := 0; i < nextGroupIndex; i++ {
-		select {
-		case txGroupChan <- txGroupAll[i]:
-		case <-interruptCh:
-			return
+			txReq.eoaType = true
 		}
 	}
-
-	// it should be in a separate goroutine, to avoid blocking the critical path.
-	/*
-		for i := 0; i < len(transactions); i++ {
-			select {
-			case txChan <- i:
-			case <-interruptCh:
-				return
+	// 2.1. the first $startupTxNum are special, to do, this can be optimized to avoid re-run in same slot
+	for txIndex, txReq := range p.allTxReqs {
+		if txIndex >= startupTxNum {
+			break
+		}
+		slotIndex := txIndex % prefetchThread
+		if _, ok := toSlotMap[txReq.to]; !ok {
+			// already assigned to a slot.
+			toSlotMap[txReq.to] = slotIndex
+		}
+		if !txReq.eoaType {
+			p.slots[slotIndex].noneEOATxs++
+		}
+		slot := p.slots[slotIndex]
+		txReq.slotIndex = slotIndex // txReq is better to be executed in this slot
+		slot.pendingTxReqList = append(slot.pendingTxReqList, txReq)
+	}
+	// 2.2. dispatch all txs
+	for _, txReq := range p.allTxReqs {
+		if i, ok := toSlotMap[txReq.to]; ok {
+			txReq.slotIndex = i
+			if !txReq.eoaType {
+				p.slots[i].noneEOATxs++
 			}
 		}
-	*/
+
+		var workload = p.slots[0].noneEOATxs
+		slotIndex := 0
+		for i, slot := range p.slots {
+			if slot.noneEOATxs < workload {
+				slotIndex = i
+				workload = slot.noneEOATxs
+			}
+		}
+		// update
+		toSlotMap[txReq.to] = slotIndex
+		slot := p.slots[slotIndex]
+		txReq.slotIndex = slotIndex // txReq is better to be executed in this slot
+		slot.pendingTxReqList = append(slot.pendingTxReqList, txReq)
+	}
+	// 3.after static dispatch, we notify the slot to work.
+	for _, slot := range p.slots {
+		slot.wakeUpChan <- struct{}{}
+	}
 }
 
 // PrefetchMining processes the state changes according to the Ethereum rules by running
