@@ -145,9 +145,9 @@ func ReadAllCanonicalHashes(db ethdb.Iteratee, from uint64, to uint64, limit int
 
 // ReadHeaderNumber returns the header number assigned to a hash.
 func ReadHeaderNumber(db ethdb.KeyValueReader, hash common.Hash) *uint64 {
-	data, _ := db.Get(headerNumberKey(hash))
+	data, _ := db.Get(headerNumberKey(hash)) // db?
 	if len(data) != 8 {
-		log.Info("ReadHeaderNumber failed", "hash", hash)
+		log.Info("ReadHeaderNumber failed", "hash", hash, "len(data)", len(data))
 		return nil
 	}
 	number := binary.BigEndian.Uint64(data)
@@ -156,9 +156,9 @@ func ReadHeaderNumber(db ethdb.KeyValueReader, hash common.Hash) *uint64 {
 
 // WriteHeaderNumber stores the hash->number mapping.
 func WriteHeaderNumber(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
-	key := headerNumberKey(hash)
-	log.Info("WriteHeaderNumber", "hash", hash, "number", number)
+	key := headerNumberKey(hash) // db?
 	enc := encodeBlockNumber(number)
+	log.Info("WriteHeaderNumber", "hash", hash, "number", number)
 	if err := db.Put(key, enc); err != nil {
 		log.Crit("Failed to store hash to number mapping", "err", err)
 	}
