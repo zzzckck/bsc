@@ -157,6 +157,7 @@ func ReadHeaderNumber(db ethdb.KeyValueReader, hash common.Hash) *uint64 {
 // WriteHeaderNumber stores the hash->number mapping.
 func WriteHeaderNumber(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	key := headerNumberKey(hash)
+	log.Info("WriteHeaderNumber", "hash", hash, "number", number)
 	enc := encodeBlockNumber(number)
 	if err := db.Put(key, enc); err != nil {
 		log.Crit("Failed to store hash to number mapping", "err", err)
