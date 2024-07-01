@@ -144,6 +144,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 		func() error {
 			if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
 				if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
+					// error?
 					return consensus.ErrUnknownAncestor
 				}
 				return consensus.ErrPrunedAncestor

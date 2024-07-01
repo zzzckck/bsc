@@ -2047,7 +2047,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 	if bc.insertStopped() {
 		return 0, nil
 	}
-
+	if len(chain) > 1000 {
+		time.Sleep(3 * time.Second)
+	}
 	// Start a parallel signature recovery (signer will fluke on fork transition, minimal perf loss)
 	signer := types.MakeSigner(bc.chainConfig, chain[0].Number(), chain[0].Time())
 	go SenderCacher.RecoverFromBlocks(signer, chain)
