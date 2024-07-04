@@ -285,7 +285,7 @@ func (f *prunedfreezer) freeze() {
 		var (
 			start    = time.Now()
 			first    = f.frozen
-			ancients = make([]common.Hash, 0, limit-f.frozen)
+			ancients = make(map[uint64]common.Hash)
 		)
 		for f.frozen <= limit {
 			// Retrieves all the components of the canonical block
@@ -300,7 +300,7 @@ func (f *prunedfreezer) freeze() {
 				break
 			}
 			if hash != (common.Hash{}) {
-				ancients = append(ancients, hash)
+				ancients[f.frozen] = hash
 			}
 		}
 		// Batch of blocks have been frozen, flush them before wiping from leveldb

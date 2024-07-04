@@ -509,15 +509,13 @@ func (f *Freezer) repair() error {
 }
 
 // delete leveldb data that save to ancientdb, split from func freeze
-func gcKvStore(db ethdb.KeyValueStore, ancients []common.Hash, first uint64, frozen uint64, start time.Time) {
+func gcKvStore(db ethdb.KeyValueStore, ancients map[uint64]common.Hash, first uint64, frozen uint64, start time.Time) {
 	// Wipe out all data from the active database
 	batch := db.NewBatch()
-	for i := 0; i < len(ancients); i++ {
+	for number, hash := range ancients {
 		// Always keep the genesis block in active database
-		if blockNumber := first + uint64(i); blockNumber != 0 {
-			DeleteBlockWithoutNumber(batch, ancients[i], blockNumber)
-			DeleteCanonicalHash(batch, blockNumber)
-		}
+		DeleteBlockWithoutNumber(batch, hash, number)
+		DeleteCanonicalHash(batch, number)
 	}
 	if err := batch.Write(); err != nil {
 		log.Crit("Failed to delete frozen canonical blocks", "err", err)
@@ -581,7 +579,7 @@ func gcKvStore(db ethdb.KeyValueStore, ancients []common.Hash, first uint64, fro
 		"blocks", frozen - first, "elapsed", common.PrettyDuration(time.Since(start)), "number", frozen - 1,
 	}
 	if n := len(ancients); n > 0 {
-		context = append(context, []interface{}{"hash", ancients[n-1]}...)
+		context = append(context, []interface{}{"hash", ancients[uint64(len(ancients)-1)]}...)
 	}
 	log.Info("Deep froze chain segment", context...)
 }
