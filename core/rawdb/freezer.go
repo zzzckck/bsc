@@ -579,7 +579,7 @@ func gcKvStore(db ethdb.KeyValueStore, ancients map[uint64]common.Hash, first ui
 		"blocks", frozen - first, "elapsed", common.PrettyDuration(time.Since(start)), "number", frozen - 1,
 	}
 	if n := len(ancients); n > 0 {
-		context = append(context, []interface{}{"hash", ancients[uint64(len(ancients)-1)]}...)
+		context = append(context, []interface{}{"hash", ancients[frozen-1]}...)
 	}
 	log.Info("Deep froze chain segment", context...)
 }

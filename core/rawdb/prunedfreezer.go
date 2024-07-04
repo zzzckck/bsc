@@ -300,7 +300,7 @@ func (f *prunedfreezer) freeze() {
 				break
 			}
 			if hash != (common.Hash{}) {
-				ancients[f.frozen] = hash
+				ancients[f.frozen-1] = hash
 			}
 		}
 		// Batch of blocks have been frozen, flush them before wiping from leveldb
