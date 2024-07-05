@@ -292,6 +292,15 @@ func (f *prunedfreezer) freeze() {
 			// Retrieves all the components of the canonical block
 			hash := ReadCanonicalHash(nfdb, f.frozen)
 			if hash == (common.Hash{}) {
+				// could happen when user turn on flag: "--pruneancient" for the first time,
+				// as it will remove the <ancientDir> brutally,
+				// while f.frozen is still pointing to a blocknumber in ancientDB, so mismatch
+				//
+				// Genesis --------<No CanonicalHash>| 90K |
+				//                ^                  ^
+				//                |                  |
+				//                |               removed
+				//              frozen
 				log.Error("Canonical hash missing, can't freeze", "number", f.frozen)
 			}
 			log.Trace("Deep froze ancient block", "number", f.frozen, "hash", hash)
