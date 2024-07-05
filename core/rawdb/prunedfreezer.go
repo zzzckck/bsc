@@ -283,9 +283,10 @@ func (f *prunedfreezer) freeze() {
 			limit = f.frozen + freezerBatchLimit
 		}
 		var (
-			start    = time.Now()
-			first    = f.frozen
-			ancients = make(map[uint64]common.Hash)
+			start         = time.Now()
+			first         = f.frozen
+			ancients      = make(map[uint64]common.Hash, limit-f.frozen)
+			ancientsSlice = make([]common.Hash, 0, limit-f.frozen)
 		)
 		for f.frozen <= limit {
 			// Retrieves all the components of the canonical block
@@ -301,6 +302,7 @@ func (f *prunedfreezer) freeze() {
 			}
 			if hash != (common.Hash{}) {
 				ancients[f.frozen-1] = hash
+				ancientsSlice = append(ancientsSlice, hash)
 			}
 		}
 		// Batch of blocks have been frozen, flush them before wiping from leveldb
@@ -308,6 +310,17 @@ func (f *prunedfreezer) freeze() {
 			log.Crit("Failed to flush frozen tables", "err", err)
 		}
 		backoff = f.frozen-first >= freezerBatchLimit
+		// verify ancients and ancientsSlice
+		for i := 0; i < len(ancientsSlice); i++ {
+			blockNumber := first + uint64(i)
+			hashInSlice := ancientsSlice[i]
+			hashInMap := ancients[blockNumber]
+			if hashInMap != hashInSlice {
+				log.Warn("hash mismatch", "len(ancientsSlice)", len(ancientsSlice), "len(ancients)", len(ancients),
+					"first", first, "i", i, "blockNumber", blockNumber,
+					"hashInSlice", hashInSlice, "hashInMap")
+			}
+		}
 		gcKvStore(f.db, ancients, first, f.frozen, start)
 	}
 }
