@@ -314,11 +314,11 @@ func (f *prunedfreezer) freeze() {
 		for i := 0; i < len(ancientsSlice); i++ {
 			blockNumber := first + uint64(i)
 			hashInSlice := ancientsSlice[i]
-			hashInMap := ancients[blockNumber]
-			if hashInMap != hashInSlice {
-				log.Warn("hash mismatch", "len(ancientsSlice)", len(ancientsSlice), "len(ancients)", len(ancients),
+			hashInMap, ok := ancients[blockNumber]
+			if !ok || hashInMap != hashInSlice {
+				log.Warn("hash mismatch", "ok", ok, "len(ancientsSlice)", len(ancientsSlice), "len(ancients)", len(ancients),
 					"first", first, "i", i, "blockNumber", blockNumber,
-					"hashInSlice", hashInSlice, "hashInMap")
+					"hashInSlice", hashInSlice, "hashInMap", hashInMap)
 			}
 		}
 		gcKvStore(f.db, ancients, first, f.frozen, start)
