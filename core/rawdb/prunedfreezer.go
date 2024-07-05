@@ -299,9 +299,9 @@ func (f *prunedfreezer) freeze() {
 				log.Error("Append ancient err", "number", f.frozen, "hash", hash, "err", err)
 				break
 			}
-			if hash != (common.Hash{}) {
-				ancients = append(ancients, hash)
-			}
+			// if hash != (common.Hash{}) {
+			ancients = append(ancients, hash)
+			// }
 		}
 		// Batch of blocks have been frozen, flush them before wiping from leveldb
 		if err := f.Sync(); err != nil {
