@@ -438,7 +438,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			}
 			if bc.triedb.Scheme() == rawdb.PathScheme && !bc.NoTries() {
 				recoverable, _ := bc.triedb.Recoverable(diskRoot)
-				if !bc.HasState(diskRoot) && !recoverable {
+				if !bc.HasState(diskRoot) {
+					log.Info("use triedb diskRoot", "recoverable", recoverable)
 					diskRoot = bc.triedb.Head()
 				}
 			}
