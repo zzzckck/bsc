@@ -386,16 +386,17 @@ func getValidatorBytesFromHeader(header *types.Header, chainConfig *params.Chain
 		return nil
 	}
 
+	if header.Number.Uint64()%parliaConfig.Epoch != 0 {
+		return nil
+	}
+
 	if !chainConfig.IsLuban(header.Number) {
-		if header.Number.Uint64()%parliaConfig.Epoch == 0 && (len(header.Extra)-extraSeal-extraVanity)%validatorBytesLengthBeforeLuban != 0 {
+		if (len(header.Extra)-extraSeal-extraVanity)%validatorBytesLengthBeforeLuban != 0 {
 			return nil
 		}
 		return header.Extra[extraVanity : len(header.Extra)-extraSeal]
 	}
 
-	if header.Number.Uint64()%parliaConfig.Epoch != 0 {
-		return nil
-	}
 	num := int(header.Extra[extraVanity])
 	start := extraVanity + validatorNumberSize
 	end := start + num*validatorBytesLength
