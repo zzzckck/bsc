@@ -299,13 +299,18 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Warn("apiHandler", "websocket Upgrade err", err)
 		return
 	}
 
 	// Start tracking the connection and drop at the end
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		log.Info("apiHandler defer conn.Close()", "RemoteAddr", conn.RemoteAddr())
+	}()
 	ipsStr := r.Header.Get("X-Forwarded-For")
 	ips := strings.Split(ipsStr, ",")
+	log.Info("apiHandler", "ipsStr", ipsStr, "len(ips)", len(ips))
 	if len(ips) < 2 {
 		return
 	}
@@ -314,6 +319,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	wsconn := &wsConn{conn: conn}
 	f.conns = append(f.conns, wsconn)
 	f.lock.Unlock()
+	log.Info("apiHandler, add new wsconn", "len(f.conns)", len(f.conns), "RemoteAddr", r.RemoteAddr)
 
 	defer func() {
 		f.lock.Lock()
@@ -379,6 +385,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			Symbol  string `json:"symbol"`
 		}
 		if err = conn.ReadJSON(&msg); err != nil {
+			log.Warn("apiHandler", "ReadJSON err", err)
 			return
 		}
 		if !*noauthFlag && !strings.HasPrefix(msg.URL, "https://twitter.com/") && !strings.HasPrefix(msg.URL, "https://www.facebook.com/") {
@@ -434,6 +441,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
+			log.Warn("Captcha verification passed", "url", msg.URL)
 		}
 		// Retrieve the Ethereum address to fund, the requesting user and a profile picture
 		var (
@@ -655,7 +663,7 @@ func (f *faucet) loop() {
 						"funded":   f.nonce,
 						"requests": f.reqs,
 					}, time.Second); err != nil {
-						log.Warn("Failed to send stats to client", "err", err)
+						log.Warn("Failed to send stats to client", "err", err, "RemoteAddr", conn.conn.RemoteAddr())
 						conn.conn.Close()
 						return // Exit the goroutine if the first send fails
 					}
@@ -681,11 +689,13 @@ func (f *faucet) loop() {
 
 		case <-f.update:
 			// Pending requests updated, stream to clients
+			log.Info("faucet loop Pending requests updated")
 			f.lock.RLock()
 			for _, conn := range f.conns {
+				log.Info("faucet loop", "local", conn.conn.LocalAddr(), "remote", conn.conn.RemoteAddr())
 				go func(conn *wsConn) {
 					if err := send(conn, map[string]interface{}{"requests": f.reqs}, time.Second); err != nil {
-						log.Warn("Failed to send requests to client", "err", err)
+						log.Warn("Failed to send requests to client", "err", err, "remote", conn.conn.RemoteAddr())
 						conn.conn.Close()
 					}
 				}(conn)
