@@ -384,8 +384,10 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			Captcha string `json:"captcha"`
 			Symbol  string `json:"symbol"`
 		}
+		log.Info("apiHandler SetReadDeadline 5min", "RemoteAddr", r.RemoteAddr)
+		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		if err = conn.ReadJSON(&msg); err != nil {
-			log.Warn("apiHandler", "ReadJSON err", err)
+			log.Warn("apiHandler", "ReadJSON err", err, "RemoteAddr", r.RemoteAddr)
 			return
 		}
 		if !*noauthFlag && !strings.HasPrefix(msg.URL, "https://twitter.com/") && !strings.HasPrefix(msg.URL, "https://www.facebook.com/") {
@@ -403,7 +405,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		log.Info("Faucet funds requested", "url", msg.URL, "tier", msg.Tier)
+		log.Info("apiHandler, Faucet funds requested", "url", msg.URL, "tier", msg.Tier)
 
 		// If captcha verifications are enabled, make sure we're not dealing with a robot
 		if *captchaToken != "" {
@@ -689,10 +691,9 @@ func (f *faucet) loop() {
 
 		case <-f.update:
 			// Pending requests updated, stream to clients
-			log.Info("faucet loop Pending requests updated")
+			log.Info("faucet loop Pending requests updated", "len(f.conns)", len(f.conns))
 			f.lock.RLock()
 			for _, conn := range f.conns {
-				log.Info("faucet loop", "local", conn.conn.LocalAddr(), "remote", conn.conn.RemoteAddr())
 				go func(conn *wsConn) {
 					if err := send(conn, map[string]interface{}{"requests": f.reqs}, time.Second); err != nil {
 						log.Warn("Failed to send requests to client", "err", err, "remote", conn.conn.RemoteAddr())
