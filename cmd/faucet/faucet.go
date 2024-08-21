@@ -319,7 +319,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	wsconn := &wsConn{conn: conn}
 	f.conns = append(f.conns, wsconn)
 	f.lock.Unlock()
-	log.Info("apiHandler, add new wsconn", "len(f.conns)", len(f.conns), "RemoteAddr", r.RemoteAddr)
+	log.Info("apiHandler, add new wsconn", "len(f.conns)", len(f.conns), "RemoteAddr", r.RemoteAddr, "ip", ip)
 
 	defer func() {
 		f.lock.Lock()
@@ -384,10 +384,10 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			Captcha string `json:"captcha"`
 			Symbol  string `json:"symbol"`
 		}
-		log.Info("apiHandler SetReadDeadline 5min", "RemoteAddr", r.RemoteAddr)
+		log.Info("apiHandler SetReadDeadline 5min", "RemoteAddr", r.RemoteAddr, "ip", ip)
 		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		if err = conn.ReadJSON(&msg); err != nil {
-			log.Warn("apiHandler", "ReadJSON err", err, "RemoteAddr", r.RemoteAddr)
+			log.Warn("apiHandler", "ReadJSON err", err, "RemoteAddr", r.RemoteAddr, "ip", ip)
 			return
 		}
 		if !*noauthFlag && !strings.HasPrefix(msg.URL, "https://twitter.com/") && !strings.HasPrefix(msg.URL, "https://www.facebook.com/") {
@@ -405,7 +405,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		log.Info("apiHandler, Faucet funds requested", "url", msg.URL, "tier", msg.Tier)
+		log.Info("apiHandler, Faucet funds requested", "url", msg.URL, "tier", msg.Tier, "RemoteAddr", r.RemoteAddr, "ip", ip)
 
 		// If captcha verifications are enabled, make sure we're not dealing with a robot
 		if *captchaToken != "" {
@@ -443,7 +443,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
-			log.Warn("Captcha verification passed", "url", msg.URL)
+			log.Warn("Captcha verification passed", "url", msg.URL, "RemoteAddr", r.RemoteAddr, "ip", ip)
 		}
 		// Retrieve the Ethereum address to fund, the requesting user and a profile picture
 		var (
@@ -485,7 +485,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			continue
 		}
-		log.Info("Faucet request valid", "url", msg.URL, "tier", msg.Tier, "user", username, "address", address)
+		log.Info("Faucet request valid", "url", msg.URL, "tier", msg.Tier, "user", username, "address", address, "RemoteAddr", r.RemoteAddr, "ip", ip)
 
 		// Ensure the user didn't request funds too recently
 		f.lock.Lock()
@@ -499,6 +499,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				log.Warn("Failed to send funding error to client", "err", err)
 			}
 			f.lock.Unlock()
+			log.Info("apiHandler", "ipTimeout", ipTimeout, "RemoteAddr", r.RemoteAddr, "ip", ip)
 			continue
 		}
 
@@ -511,6 +512,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 				amount = new(big.Int).Div(amount, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(msg.Tier)), nil))
 
 				tx = types.NewTransaction(f.nonce+uint64(len(f.reqs)), address, amount, 21000, f.price, nil)
+				log.Info("apiHandler NewTransaction for BNB", "RemoteAddr", r.RemoteAddr, "ip", ip)
 			} else {
 				tokenInfo, ok := f.bep2eInfos[msg.Symbol]
 				if !ok {
@@ -525,9 +527,11 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				tx = types.NewTransaction(f.nonce+uint64(len(f.reqs)), tokenInfo.Contract, nil, 420000, f.price, input)
+				log.Info("apiHandler NewTransaction", "msg.Symbol", msg.Symbol, "RemoteAddr", r.RemoteAddr, "ip", ip)
 			}
 			signed, err := f.keystore.SignTx(f.account, tx, f.config.ChainID)
 			if err != nil {
+				log.Info("apiHandler SignTx failed", "err", err, "RemoteAddr", r.RemoteAddr, "ip", ip)
 				f.lock.Unlock()
 				if err = sendError(wsconn, err); err != nil {
 					log.Warn("Failed to send transaction creation error to client", "err", err)
@@ -537,6 +541,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			// Submit the transaction and mark as funded if successful
 			if err := f.client.SendTransaction(context.Background(), signed); err != nil {
+				log.Info("apiHandler SendTransaction failed", "err", err, "RemoteAddr", r.RemoteAddr, "ip", ip)
 				f.lock.Unlock()
 				if err = sendError(wsconn, err); err != nil {
 					log.Warn("Failed to send transaction transmission error to client", "err", err)
@@ -561,6 +566,7 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Send an error if too frequent funding, otherwise a success
 		if !fund {
+			log.Info("apiHandler !fund", "RemoteAddr", r.RemoteAddr, "ip", ip)
 			if err = sendError(wsconn, fmt.Errorf("%s left until next allowance", common.PrettyDuration(time.Until(timeout)))); err != nil { // nolint: gosimple
 				log.Warn("Failed to send funding error to client", "err", err)
 				return
