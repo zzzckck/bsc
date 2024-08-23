@@ -639,6 +639,11 @@ func (f *faucet) refresh(head *types.Header) error {
 				}
 				// pump 20%
 				prePrice := req.Tx.GasPrice()
+				maxPrice := big.NewInt(50 * params.GWei)
+				if prePrice.Cmp(maxPrice) >= 0 {
+					log.Info("refresh reach max price", "prePrice", prePrice, "maxPrice", maxPrice, "nonce", req.Tx.Nonce())
+					break
+				}
 				newPrice := new(big.Int).Add(prePrice, new(big.Int).Div(prePrice, big.NewInt(5)))
 				log.Info("refresh", "prePrice", prePrice, "newPrice", newPrice, "nonce", req.Tx.Nonce())
 				newTx := types.NewTransaction(req.Tx.Nonce(), *req.Tx.To(), req.Tx.Value(), 21000, newPrice, req.Tx.Data())
