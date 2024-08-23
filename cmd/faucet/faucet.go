@@ -621,10 +621,38 @@ func (f *faucet) refresh(head *types.Header) error {
 	f.lock.Lock()
 	f.head, f.balance = head, balance
 	f.price, f.nonce = price, nonce
-	if len(f.reqs) > 0 && f.reqs[0].Tx.Nonce() > f.nonce {
+	if len(f.reqs) == 0 {
+		log.Warn("refresh len(f.reqs) == 0", "f.nonce", f.nonce)
+		f.lock.Unlock()
+		return nil
+	}
+	// reqs := f.reqs
+	if f.reqs[0].Tx.Nonce() == f.nonce {
+		log.Warn("refresh equal nonce", "f.nonce", f.nonce, "reqs[0].Time", f.reqs[0].Time, "time.Now()", time.Now())
+		timeout := f.reqs[0].Time.Add(9 * time.Second)
+		if time.Now().After(timeout) {
+			log.Warn("refresh tx pending for too long time, >15s")
+			// reqs[0] has been pending for more than 15 second, resend it
+			for i, req := range f.reqs {
+				if i >= 10 {
+					break
+				}
+				log.Warn("refresh resend tx", "i", i, "nonce", req.Tx.Nonce())
+				if err := f.client.SendTransaction(context.Background(), req.Tx); err != nil {
+					log.Warn("refresh SendTransaction failed", "err", err,
+						"req.Tx.Nonce()", req.Tx.Nonce(),
+						"f.nonce", f.nonce)
+					continue
+				}
+			}
+		}
+	}
+	log.Warn("refresh", "f.nonce", f.nonce, "f.reqs[0].Tx.Nonce()", f.reqs[0].Tx.Nonce())
+	if f.reqs[0].Tx.Nonce() > f.nonce {
 		f.reqs = f.reqs[:0]
 	}
 	for len(f.reqs) > 0 && f.reqs[0].Tx.Nonce() < f.nonce {
+		log.Info("refresh pop one req", "f.nonce", f.nonce, "f.reqs[0].Tx.Nonce()", f.reqs[0].Tx.Nonce())
 		f.reqs = f.reqs[1:]
 	}
 	f.lock.Unlock()
@@ -664,6 +692,10 @@ func (f *faucet) loop() {
 
 			balance := new(big.Int).Div(f.balance, ether)
 
+			// check the pending reqs, resend if
+			//   a.it is the next transaction, reqs.nonce = nonce
+			//   b.it has been pending for too long, 10 blocks?
+
 			for _, conn := range f.conns {
 				go func(conn *wsConn) {
 					if err := send(conn, map[string]interface{}{
@@ -697,8 +729,8 @@ func (f *faucet) loop() {
 
 		case <-f.update:
 			// Pending requests updated, stream to clients
-			log.Info("faucet loop Pending requests updated", "len(f.conns)", len(f.conns))
 			f.lock.RLock()
+			log.Info("faucet loop Pending requests updated", "len(f.conns)", len(f.conns), "len(f.reqs)", len(f.reqs))
 			for _, conn := range f.conns {
 				go func(conn *wsConn) {
 					if err := send(conn, map[string]interface{}{"requests": f.reqs}, time.Second); err != nil {
