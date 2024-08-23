@@ -629,21 +629,31 @@ func (f *faucet) refresh(head *types.Header) error {
 	// reqs := f.reqs
 	if f.reqs[0].Tx.Nonce() == f.nonce {
 		log.Warn("refresh equal nonce", "f.nonce", f.nonce, "reqs[0].Time", f.reqs[0].Time, "time.Now()", time.Now())
-		timeout := f.reqs[0].Time.Add(9 * time.Second)
+		timeout := f.reqs[0].Time.Add(15 * time.Second)
 		if time.Now().After(timeout) {
 			log.Warn("refresh tx pending for too long time, >15s")
 			// reqs[0] has been pending for more than 15 second, resend it
 			for i, req := range f.reqs {
-				if i >= 10 {
+				if i >= 3 {
 					break
 				}
+				// pump 20%
+				prePrice := req.Tx.GasPrice()
+				newPrice := new(big.Int).Add(prePrice, new(big.Int).Div(prePrice, big.NewInt(5)))
+				log.Info("refresh", "prePrice", prePrice, "newPrice", newPrice, "nonce", req.Tx.Nonce())
+				newTx := types.NewTransaction(req.Tx.Nonce(), *req.Tx.To(), req.Tx.Value(), 21000, newPrice, req.Tx.Data())
+				newSigned, err := f.keystore.SignTx(f.account, newTx, f.config.ChainID)
+				if err != nil {
+					log.Info("refresh SignTx failed", "err", err, "nonce", req.Tx.Nonce())
+				}
 				log.Warn("refresh resend tx", "i", i, "nonce", req.Tx.Nonce())
-				if err := f.client.SendTransaction(context.Background(), req.Tx); err != nil {
+				if err := f.client.SendTransaction(context.Background(), newSigned); err != nil {
 					log.Warn("refresh SendTransaction failed", "err", err,
 						"req.Tx.Nonce()", req.Tx.Nonce(),
 						"f.nonce", f.nonce)
 					continue
 				}
+				req.Tx = newSigned
 			}
 		}
 	}
