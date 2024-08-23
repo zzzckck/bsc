@@ -646,7 +646,8 @@ func (f *faucet) refresh(head *types.Header) error {
 				if err != nil {
 					log.Info("refresh SignTx failed", "err", err, "nonce", req.Tx.Nonce())
 				}
-				log.Warn("refresh resend tx", "i", i, "nonce", req.Tx.Nonce())
+				log.Warn("refresh resend tx", "i", i, "nonce", req.Tx.Nonce(),
+					"preHash", req.Tx.Hash().Hex(), "newHash", newSigned.Hash().Hex())
 				if err := f.client.SendTransaction(context.Background(), newSigned); err != nil {
 					log.Warn("refresh SendTransaction failed", "err", err,
 						"req.Tx.Nonce()", req.Tx.Nonce(),
