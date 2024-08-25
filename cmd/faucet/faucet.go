@@ -304,13 +304,9 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start tracking the connection and drop at the end
-	defer func() {
-		conn.Close()
-		log.Info("apiHandler defer conn.Close()", "RemoteAddr", conn.RemoteAddr())
-	}()
+	defer conn.Close()
 	ipsStr := r.Header.Get("X-Forwarded-For")
 	ips := strings.Split(ipsStr, ",")
-	log.Info("apiHandler", "ipsStr", ipsStr, "len(ips)", len(ips))
 	if len(ips) < 2 {
 		return
 	}
@@ -319,7 +315,6 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 	wsconn := &wsConn{conn: conn}
 	f.conns = append(f.conns, wsconn)
 	f.lock.Unlock()
-	log.Info("apiHandler, add new wsconn", "len(f.conns)", len(f.conns), "RemoteAddr", r.RemoteAddr, "ip", ip)
 
 	defer func() {
 		f.lock.Lock()
@@ -384,10 +379,9 @@ func (f *faucet) apiHandler(w http.ResponseWriter, r *http.Request) {
 			Captcha string `json:"captcha"`
 			Symbol  string `json:"symbol"`
 		}
-		log.Info("apiHandler SetReadDeadline 5min", "RemoteAddr", r.RemoteAddr, "ip", ip)
 		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		if err = conn.ReadJSON(&msg); err != nil {
-			log.Warn("apiHandler", "ReadJSON err", err, "RemoteAddr", r.RemoteAddr, "ip", ip)
+			log.Warn("apiHandler", "ReadJSON err", err, "ip", ip)
 			return
 		}
 		if !*noauthFlag && !strings.HasPrefix(msg.URL, "https://twitter.com/") && !strings.HasPrefix(msg.URL, "https://www.facebook.com/") {
@@ -645,7 +639,7 @@ func (f *faucet) refresh(head *types.Header) error {
 					break
 				}
 				newPrice := new(big.Int).Add(prePrice, new(big.Int).Div(prePrice, big.NewInt(5)))
-				log.Info("refresh", "prePrice", prePrice, "newPrice", newPrice, "nonce", req.Tx.Nonce())
+				log.Info("refresh", "prePrice", prePrice, "newPrice", newPrice, "nonce", req.Tx.Nonce(), "req.Tx.Gas()", req.Tx.Gas())
 				newTx := types.NewTransaction(req.Tx.Nonce(), *req.Tx.To(), req.Tx.Value(), req.Tx.Gas(), newPrice, req.Tx.Data())
 				newSigned, err := f.keystore.SignTx(f.account, newTx, f.config.ChainID)
 				if err != nil {
