@@ -646,7 +646,7 @@ func (f *faucet) refresh(head *types.Header) error {
 				}
 				newPrice := new(big.Int).Add(prePrice, new(big.Int).Div(prePrice, big.NewInt(5)))
 				log.Info("refresh", "prePrice", prePrice, "newPrice", newPrice, "nonce", req.Tx.Nonce())
-				newTx := types.NewTransaction(req.Tx.Nonce(), *req.Tx.To(), req.Tx.Value(), 21000, newPrice, req.Tx.Data())
+				newTx := types.NewTransaction(req.Tx.Nonce(), *req.Tx.To(), req.Tx.Value(), req.Tx.Gas(), newPrice, req.Tx.Data())
 				newSigned, err := f.keystore.SignTx(f.account, newTx, f.config.ChainID)
 				if err != nil {
 					log.Info("refresh SignTx failed", "err", err, "nonce", req.Tx.Nonce())
