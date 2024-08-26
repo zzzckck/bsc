@@ -77,6 +77,10 @@ var (
 	fixGasPrice        = flag.Int64("faucet.fixedprice", 0, "Will use fixed gas price if specified")
 	twitterTokenFlag   = flag.String("twitter.token", "", "Bearer token to authenticate with the v2 Twitter API")
 	twitterTokenV1Flag = flag.String("twitter.token.v1", "", "Bearer token to authenticate with the v1.1 Twitter API")
+
+	resendInterval    = 15 * time.Second
+	resendBatchSize   = 3
+	resendMaxGasPrice = big.NewInt(50 * params.GWei)
 )
 
 var (
@@ -613,37 +617,33 @@ func (f *faucet) refresh(head *types.Header) error {
 		f.lock.Unlock()
 		return nil
 	}
-	// reqs := f.reqs
 	if f.reqs[0].Tx.Nonce() == f.nonce {
-		log.Warn("refresh equal nonce", "f.nonce", f.nonce, "reqs[0].Time", f.reqs[0].Time, "time.Now()", time.Now())
-		timeout := f.reqs[0].Time.Add(15 * time.Second)
-		if time.Now().After(timeout) {
-			log.Warn("refresh tx pending for too long time, >15s")
-			// reqs[0] has been pending for more than 15 second, resend it
+		// if the next Tx failed to be included within a during(resendInterval), try to resend it
+		// with higher gasPrice it, as it would be discarded in the network.
+		// also resend extra following txs, as they could be discarded as well.
+		if time.Now().After(f.reqs[0].Time.Add(resendInterval)) {
 			for i, req := range f.reqs {
-				if i >= 3 {
+				if i >= resendBatchSize {
 					break
 				}
-				// pump 20%
 				prePrice := req.Tx.GasPrice()
-				maxPrice := big.NewInt(50 * params.GWei)
-				if prePrice.Cmp(maxPrice) >= 0 {
-					log.Info("refresh reach max price", "prePrice", prePrice, "maxPrice", maxPrice, "nonce", req.Tx.Nonce())
+				// pump gas price 20% to replace the previous one.
+				newPrice := new(big.Int).Add(prePrice, new(big.Int).Div(prePrice, big.NewInt(5)))
+				if newPrice.Cmp(resendMaxGasPrice) >= 0 {
+					log.Info("resendMaxGasPrice reached", "newPrice", newPrice, "resendMaxGasPrice", resendMaxGasPrice, "nonce", req.Tx.Nonce())
 					break
 				}
-				newPrice := new(big.Int).Add(prePrice, new(big.Int).Div(prePrice, big.NewInt(5)))
-				log.Info("refresh", "prePrice", prePrice, "newPrice", newPrice, "nonce", req.Tx.Nonce(), "req.Tx.Gas()", req.Tx.Gas())
 				newTx := types.NewTransaction(req.Tx.Nonce(), *req.Tx.To(), req.Tx.Value(), req.Tx.Gas(), newPrice, req.Tx.Data())
 				newSigned, err := f.keystore.SignTx(f.account, newTx, f.config.ChainID)
 				if err != nil {
-					log.Info("refresh SignTx failed", "err", err, "nonce", req.Tx.Nonce())
+					log.Error("resend sign tx failed", "err", err)
 				}
-				log.Warn("refresh resend tx", "i", i, "nonce", req.Tx.Nonce(),
-					"preHash", req.Tx.Hash().Hex(), "newHash", newSigned.Hash().Hex())
+				log.Info("reqs[0] Tx has been stuck for a while, trigger resend",
+					"resendInterval", resendInterval, "resendTxSize", resendBatchSize,
+					"preHash", req.Tx.Hash().Hex(), "newHash", newSigned.Hash().Hex(),
+					"newPrice", newPrice, "nonce", req.Tx.Nonce(), "req.Tx.Gas()", req.Tx.Gas())
 				if err := f.client.SendTransaction(context.Background(), newSigned); err != nil {
-					log.Warn("refresh SendTransaction failed", "err", err,
-						"req.Tx.Nonce()", req.Tx.Nonce(),
-						"f.nonce", f.nonce)
+					log.Warn("resend tx failed", "err", err)
 					continue
 				}
 				req.Tx = newSigned
