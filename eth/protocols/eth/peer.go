@@ -24,6 +24,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -213,7 +214,11 @@ func (p *Peer) markTransaction(hash common.Hash) {
 // tests that directly send messages without having to do the async queueing.
 func (p *Peer) SendTransactions(txs types.Transactions) error {
 	// Mark all the transactions as known, but ensure we don't overflow our limits
+	signer := types.NewCancunSigner(new(big.Int).SetUint64(56))
 	for _, tx := range txs {
+		from, _ := types.Sender(signer, tx)
+		log.Info("SendTransactions", "Peer", p.ID(), "RemoteAddr", p.RemoteAddr(),
+			"tx.From", from, "tx.Hash", tx.Hash(), "tx.Nonce", tx.Nonce())
 		p.knownTxs.Add(tx.Hash())
 	}
 	return p2p.Send(p.rw, TransactionsMsg, txs)
