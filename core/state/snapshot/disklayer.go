@@ -109,6 +109,7 @@ func (dl *diskLayer) Account(hash common.Hash) (*types.SlimAccount, error) {
 // AccountRLP directly retrieves the account RLP associated with a particular
 // hash in the snapshot slim data format.
 func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
+	defer debug.Handler.StartRegionAuto("diskLayer.AccountRLP")()
 	dl.lock.RLock()
 	defer dl.lock.RUnlock()
 
