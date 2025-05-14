@@ -121,7 +121,7 @@ func newTriePrefetcher(db Database, root common.Hash, namespace string, noreads 
 // include: subfetcher's creation & abort, child subfetcher's creation & abort.
 // since the mainLoop will handle all the requests, each message handle should be lightweight
 func (p *triePrefetcher) mainLoop() {
-	defer debug.Handler.StartRegionAuto("prefetch mainLoop")()
+	defer debug.Handler.StartRegionAutoExpensive("prefetch mainLoop")()
 	for {
 		select {
 		case pMsg := <-p.prefetchChan:

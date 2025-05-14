@@ -1261,7 +1261,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 // and submit them to the sealer.
 func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// to enable trace, blockNum to 1000000000, set txNum to 1000
-	defer debug.Handler.StartRegionAuto("commitWork")()
+	defer debug.Handler.StartRegionAutoExpensive("commitWork")()
 	// Abort committing if node is still syncing
 	if w.syncing.Load() {
 		return
