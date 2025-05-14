@@ -1132,6 +1132,7 @@ func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
+	defer debug.Handler.StartRegionAuto("Parlia-Prepare")()
 	header.Coinbase = p.val
 	header.Nonce = types.BlockNonce{}
 

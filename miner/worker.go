@@ -1070,11 +1070,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		log.Error("Failed to prepare header for sealing", "err", err)
 		return nil, err
 	}
-	// if header.Difficulty == diffInTurn {
-	// }
-	traceMsg := "PrepareWork " + header.Number.String()
-	defer debug.Handler.StartRegionAuto(traceMsg)()
-
+	defer debug.Handler.StartRegionAuto("PrepareWork-2")()
 	// Apply EIP-4844, EIP-4788.
 	if w.chainConfig.IsCancun(header.Number, header.Time) {
 		var excessBlobGas uint64
@@ -1103,7 +1099,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
 	}
-
+	defer debug.Handler.StartRegionAuto("PrepareWork-3")()
 	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
 
