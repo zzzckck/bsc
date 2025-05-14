@@ -529,12 +529,15 @@ func (sf *subfetcher) openTrie() error {
 // loop waits for new tasks to be scheduled and keeps loading them until it runs
 // out of tasks or its underlying trie is retrieved for committing.
 func (sf *subfetcher) loop() {
-	traceMsg := "subfetcher"
-	if sf.owner != (common.Hash{}) {
-		traceMsg += "_" + sf.addr.String()
-	}
-	defer debug.Handler.StartRegionAuto(traceMsg)()
-
+	/*
+		traceMsg := "subfetcher"
+		if sf.owner == (common.Hash{}) {
+			traceMsg += "_account" // L1 account trie
+		} else {
+			traceMsg += "_" + sf.addr.String() // L2 storage trie
+		}
+		defer debug.Handler.StartRegionAuto(traceMsg)()
+	*/
 	// No matter how the loop stops, signal anyone waiting that it's terminated
 	defer close(sf.term)
 

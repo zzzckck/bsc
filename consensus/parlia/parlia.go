@@ -1719,12 +1719,14 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	// Wait until sealing is terminated or delay timeout.
 	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
 	go func() {
+		defer debug.Handler.StartRegionAuto("Seal-1")()
 		select {
 		case <-stop:
 			return
 		case <-time.After(delay):
 		}
 
+		defer debug.Handler.StartRegionAuto("Seal-2")()
 		err := p.assembleVoteAttestation(chain, header)
 		if err != nil {
 			/* If the vote attestation can't be assembled successfully, the blockchain won't get
@@ -1741,6 +1743,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		copy(header.Extra[len(header.Extra)-extraSeal:], sig)
 
 		if p.shouldWaitForCurrentBlockProcess(chain, header, snap) {
+			defer debug.Handler.StartRegionAuto("Seal-3")()
 			highestVerifiedHeader := chain.GetHighestVerifiedHeader()
 			// including time for writing and committing blocks
 			waitProcessEstimate := math.Ceil(float64(highestVerifiedHeader.GasUsed) / float64(100_000_000))
@@ -1758,6 +1761,7 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 			}
 		}
 
+		defer debug.Handler.StartRegionAuto("Seal-4")()
 		select {
 		case results <- block.WithSeal(header):
 		default:

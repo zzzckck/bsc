@@ -119,7 +119,7 @@ func (t *StateTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
 // If the specified account is not in the trie, nil will be returned.
 // If a trie node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) GetAccount(address common.Address) (*types.StateAccount, error) {
-	defer debug.Handler.StartRegionAuto("StateTrie GetAccount")()
+	// defer debug.Handler.StartRegionAuto("StateTrie GetAccount")()
 	res, err := t.trie.Get(t.hashKey(address.Bytes()))
 	if res == nil || err != nil {
 		return nil, err
