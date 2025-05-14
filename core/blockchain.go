@@ -1924,6 +1924,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 // WriteBlockAndSetHead writes the given block and all associated state to the database,
 // and applies the block as the new chain head.
 func (bc *BlockChain) WriteBlockAndSetHead(block *types.Block, receipts []*types.Receipt, logs []*types.Log, state *state.StateDB, emitHeadEvent bool) (status WriteStatus, err error) {
+	defer debug.Handler.StartRegionAuto("WriteBlockAndSetHead")()
 	if !bc.chainmu.TryLock() {
 		return NonStatTy, errChainStopped
 	}
