@@ -612,7 +612,7 @@ func (t *Trie) Hash() common.Hash {
 // Once the trie is committed, it's not usable anymore. A new trie must
 // be created with new root and updated trie database for following usage
 func (t *Trie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet) {
-	defer debug.Handler.StartRegionAuto("Trie Commit")()
+	defer debug.Handler.StartRegionAutoExpensive("Trie Commit")()
 	defer func() {
 		t.committed = true
 	}()

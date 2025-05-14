@@ -200,7 +200,7 @@ func (p *triePrefetcher) mainLoop() {
 // close iterates over all the subfetchers, aborts any that were left spinning
 // and reports the stats to the metrics subsystem.
 func (p *triePrefetcher) close() {
-	defer debug.Handler.StartRegionAuto("triePrefetcher close")()
+	defer debug.Handler.StartRegionAutoExpensive("triePrefetcher close")()
 
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
@@ -324,7 +324,7 @@ func (p *triePrefetcher) trie(owner common.Hash, root common.Hash) Trie {
 // used marks a batch of state items used to allow creating statistics as to
 // how useful or wasteful the prefetcher is.
 func (p *triePrefetcher) used(owner common.Hash, root common.Hash, usedAddr []common.Address, usedSlot []common.Hash) {
-	defer debug.Handler.StartRegionAuto("triePrefetcher used")()
+	defer debug.Handler.StartRegionAutoExpensive("triePrefetcher used")()
 	// If the prefetcher is an inactive one, bail out
 	if p.fetches != nil {
 		return
@@ -393,7 +393,7 @@ type subfetcher struct {
 // newSubfetcher creates a goroutine to prefetch state items belonging to a
 // particular root hash.
 func newSubfetcher(db Database, state common.Hash, owner common.Hash, root common.Hash, addr common.Address) *subfetcher {
-	defer debug.Handler.StartRegionAuto("newSubfetcher")()
+	defer debug.Handler.StartRegionAutoExpensive("newSubfetcher")()
 	sf := &subfetcher{
 		db:    db,
 		state: state,
@@ -425,7 +425,7 @@ func (sf *subfetcher) schedule(keys [][]byte) {
 }
 
 func (sf *subfetcher) scheduleParallel(keys [][]byte) {
-	defer debug.Handler.StartRegionAuto("scheduleParallel")()
+	defer debug.Handler.StartRegionAutoExpensive("scheduleParallel")()
 
 	var keyIndex uint32 = 0
 	childrenNum := len(sf.paraChildren)
@@ -529,15 +529,14 @@ func (sf *subfetcher) openTrie() error {
 // loop waits for new tasks to be scheduled and keeps loading them until it runs
 // out of tasks or its underlying trie is retrieved for committing.
 func (sf *subfetcher) loop() {
-	/*
-		traceMsg := "subfetcher"
-		if sf.owner == (common.Hash{}) {
-			traceMsg += "_account" // L1 account trie
-		} else {
-			traceMsg += "_" + sf.addr.String() // L2 storage trie
-		}
-		defer debug.Handler.StartRegionAuto(traceMsg)()
-	*/
+
+	traceMsg := "subfetcher"
+	if sf.owner == (common.Hash{}) {
+		traceMsg += "_account" // L1 account trie
+	} else {
+		traceMsg += "_" + sf.addr.String() // L2 storage trie
+	}
+	defer debug.Handler.StartRegionAutoExpensive(traceMsg)()
 	// No matter how the loop stops, signal anyone waiting that it's terminated
 	defer close(sf.term)
 

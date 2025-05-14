@@ -449,10 +449,11 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
-			// if next block is my turn, enable trace
-			difficulty := w.engine.CalcDifficulty(w.chain, 0, head.Header)
 			mockBlockNum := uint64(1)
 			debug.Handler.EnableTraceBigBlock(mockBlockNum, 0, "") // to disable trace, set blockNum to 0
+
+			// if next block is my turn, enable trace
+			difficulty := w.engine.CalcDifficulty(w.chain, 0, head.Header)
 			if difficulty != nil && difficulty.Cmp(diffInTurn) == 0 {
 				log.Info("Next is my turn, try to enable trace", "block", head.Header.Number.Uint64()+1)
 				mockTxNum := 10000

@@ -106,7 +106,7 @@ func (t *StateTrie) MustGet(key []byte) []byte {
 // If the specified storage slot is not in the trie, nil will be returned.
 // If a trie node is not found in the database, a MissingNodeError is returned.
 func (t *StateTrie) GetStorage(_ common.Address, key []byte) ([]byte, error) {
-	defer debug.Handler.StartRegionAuto("StateTrie GetStorage")()
+	defer debug.Handler.StartRegionAutoExpensive("StateTrie GetStorage")()
 	enc, err := t.trie.Get(t.hashKey(key))
 	if err != nil || len(enc) == 0 {
 		return nil, err
@@ -251,7 +251,7 @@ func (t *StateTrie) Witness() map[string]struct{} {
 // Once the trie is committed, it's not usable anymore. A new trie must
 // be created with new root and updated trie database for following usage
 func (t *StateTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet) {
-	defer debug.Handler.StartRegionAuto("StateTrie Commit")()
+	defer debug.Handler.StartRegionAutoExpensive("StateTrie Commit")()
 	// Write all the pre-images to the actual disk database
 	if len(t.getSecKeyCache()) > 0 {
 		if t.preimages != nil {
@@ -270,7 +270,7 @@ func (t *StateTrie) Commit(collectLeaf bool) (common.Hash, *trienode.NodeSet) {
 // Hash returns the root hash of StateTrie. It does not write to the
 // database and can be used even if the trie doesn't have one.
 func (t *StateTrie) Hash() common.Hash {
-	defer debug.Handler.StartRegionAuto("StateTrie.Hash")()
+	defer debug.Handler.StartRegionAutoExpensive("StateTrie.Hash")()
 	return t.trie.Hash()
 }
 
