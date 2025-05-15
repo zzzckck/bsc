@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/miner/builderclient"
@@ -621,7 +622,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	if !b.isRunning() || !b.receivingBid() {
 		return
 	}
-
+	defer debug.Handler.StartRegionAuto("simBid")()
 	var (
 		startTS = time.Now()
 
@@ -804,6 +805,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// if enable greedy merge, fill bid env with transactions from mempool
 	if *b.config.GreedyMergeTx {
+		defer debug.Handler.StartRegionAuto("mev.greedyMerge")()
 		endingBidsExtra := 20 * time.Millisecond // Add a buffer to ensure ending bids before `delayLeftOver`
 		minTimeLeftForEndingBids := b.delayLeftOver + endingBidsExtra
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &minTimeLeftForEndingBids)
@@ -824,6 +826,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	// commit payBidTx at the end of the block
+	defer debug.Handler.StartRegionAuto("mev.commitPayBidTx")()
 	bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
 	err = bidRuntime.commitTransaction(b.chain, b.chainConfig, payBidTx, true)
 	if err != nil {
@@ -961,6 +964,7 @@ func (r *BidRuntime) packReward(validatorCommission uint64) {
 }
 
 func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction, unRevertible bool) error {
+	defer debug.Handler.StartRegionAuto("mev.commitTransaction")()
 	var (
 		env = r.env
 		sc  *types.BlobSidecar

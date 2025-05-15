@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/internal/debug"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
@@ -267,6 +268,8 @@ func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness) 
 // StopPrefetcher terminates a running prefetcher and reports any leftover stats
 // from the gathered metrics.
 func (s *StateDB) StopPrefetcher() {
+	defer debug.Handler.StartRegionAuto("StopPrefetcher")()
+
 	if s.noTrie {
 		return
 	}
@@ -393,18 +396,21 @@ func (s *StateDB) SubRefund(gas uint64) {
 // Exist reports whether the given account address exists in the state.
 // Notably this also returns true for self-destructed accounts.
 func (s *StateDB) Exist(addr common.Address) bool {
+	defer debug.Handler.StartRegionAuto("StateDB.Exist")()
 	return s.getStateObject(addr) != nil
 }
 
 // Empty returns whether the state object is either non-existent
 // or empty according to the EIP161 specification (balance = nonce = code = 0)
 func (s *StateDB) Empty(addr common.Address) bool {
+	defer debug.Handler.StartRegionAuto("StateDB.Empty")()
 	so := s.getStateObject(addr)
 	return so == nil || so.empty()
 }
 
 // GetBalance retrieves the balance from the given address or 0 if object not found
 func (s *StateDB) GetBalance(addr common.Address) *uint256.Int {
+	defer debug.Handler.StartRegionAuto("StateDB.GetBalance")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Balance()
@@ -414,6 +420,7 @@ func (s *StateDB) GetBalance(addr common.Address) *uint256.Int {
 
 // GetNonce retrieves the nonce from the given address or 0 if object not found
 func (s *StateDB) GetNonce(addr common.Address) uint64 {
+	defer debug.Handler.StartRegionAuto("StateDB.GetNonce")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Nonce()
@@ -425,6 +432,7 @@ func (s *StateDB) GetNonce(addr common.Address) uint64 {
 // GetStorageRoot retrieves the storage root from the given address or empty
 // if object not found.
 func (s *StateDB) GetStorageRoot(addr common.Address) common.Hash {
+	defer debug.Handler.StartRegionAuto("StateDB.GetStorageRoot")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.Root()
@@ -438,6 +446,7 @@ func (s *StateDB) TxIndex() int {
 }
 
 func (s *StateDB) GetCode(addr common.Address) []byte {
+	defer debug.Handler.StartRegionAuto("StateDB.GetCode")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		if s.witness != nil {
@@ -449,6 +458,7 @@ func (s *StateDB) GetCode(addr common.Address) []byte {
 }
 
 func (s *StateDB) GetRoot(addr common.Address) common.Hash {
+	defer debug.Handler.StartRegionAuto("StateDB.GetRoot")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.data.Root
@@ -457,6 +467,7 @@ func (s *StateDB) GetRoot(addr common.Address) common.Hash {
 }
 
 func (s *StateDB) GetCodeSize(addr common.Address) int {
+	defer debug.Handler.StartRegionAuto("StateDB.GetCodeSize")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		if s.witness != nil {
@@ -468,6 +479,7 @@ func (s *StateDB) GetCodeSize(addr common.Address) int {
 }
 
 func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
+	defer debug.Handler.StartRegionAuto("StateDB.GetCodeHash")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return common.BytesToHash(stateObject.CodeHash())
@@ -477,6 +489,7 @@ func (s *StateDB) GetCodeHash(addr common.Address) common.Hash {
 
 // GetState retrieves the value associated with the specific key.
 func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
+	defer debug.Handler.StartRegionAuto("StateDB.GetState")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.GetState(hash)
@@ -487,6 +500,7 @@ func (s *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash {
 // GetCommittedState retrieves the value associated with the specific key
 // without any mutations caused in the current execution.
 func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) common.Hash {
+	defer debug.Handler.StartRegionAuto("StateDB.GetCommittedState")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.GetCommittedState(hash)
@@ -500,6 +514,7 @@ func (s *StateDB) Database() Database {
 }
 
 func (s *StateDB) HasSelfDestructed(addr common.Address) bool {
+	defer debug.Handler.StartRegionAuto("StateDB.HasSelfDestructed")()
 	stateObject := s.getStateObject(addr)
 	if stateObject != nil {
 		return stateObject.selfDestructed
@@ -565,6 +580,7 @@ func (s *StateDB) SetState(addr common.Address, key, value common.Hash) common.H
 // storage. This function should only be used for debugging and the mutations
 // must be discarded afterwards.
 func (s *StateDB) SetStorage(addr common.Address, storage map[common.Hash]common.Hash) {
+	defer debug.Handler.StartRegionAuto("StateDB.SetStorage")()
 	// SetStorage needs to wipe the existing storage. We achieve this by marking
 	// the account as self-destructed in this block. The effect is that storage
 	// lookups will not hit the disk, as it is assumed that the disk data belongs
@@ -596,6 +612,7 @@ func (s *StateDB) SetStorage(addr common.Address, storage map[common.Hash]common
 // The account's state object is still available until the state is committed,
 // getStateObject will return a non-nil account after SelfDestruct.
 func (s *StateDB) SelfDestruct(addr common.Address) uint256.Int {
+	defer debug.Handler.StartRegionAuto("StateDB.SelfDestruct")()
 	stateObject := s.getStateObject(addr)
 	var prevBalance uint256.Int
 	if stateObject == nil {
@@ -617,6 +634,7 @@ func (s *StateDB) SelfDestruct(addr common.Address) uint256.Int {
 }
 
 func (s *StateDB) SelfDestruct6780(addr common.Address) (uint256.Int, bool) {
+	defer debug.Handler.StartRegionAuto("StateDB.SelfDestruct6780")()
 	stateObject := s.getStateObject(addr)
 	if stateObject == nil {
 		return uint256.Int{}, false
@@ -758,6 +776,7 @@ func (s *StateDB) CreateAccount(addr common.Address) {
 // This operation sets the 'newContract'-flag, which is required in order to
 // correctly handle EIP-6780 'delete-in-same-transaction' logic.
 func (s *StateDB) CreateContract(addr common.Address) {
+	defer debug.Handler.StartRegionAuto("StateDB.CreateContract")()
 	obj := s.getStateObject(addr)
 	if !obj.newContract {
 		obj.newContract = true
@@ -871,6 +890,7 @@ func (s *StateDB) GetRefund() uint64 {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
+	defer debug.Handler.StartRegionAuto("Finalise")()
 	addressesToPrefetch := make([]common.Address, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
@@ -914,6 +934,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+	defer debug.Handler.StartRegionAuto("StateDB.IntermediateRoot")()
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
@@ -1525,6 +1546,7 @@ func (s *StateDB) commitAndFlush(block uint64, deleteEmptyObjects bool, noStorag
 // no empty accounts left that could be deleted by EIP-158, storage wiping
 // should not occur.
 func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool, noStorageWiping bool) (common.Hash, *types.DiffLayer, error) {
+	defer debug.Handler.StartRegionAuto("StateDB.Commit")()
 	ret, err := s.commitAndFlush(block, deleteEmptyObjects, noStorageWiping)
 	if err != nil {
 		return common.Hash{}, nil, err
