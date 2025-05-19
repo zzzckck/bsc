@@ -1,11 +1,17 @@
 import { ethers } from "ethers";
 import program from "commander";
-
+import fs from 'node:fs';
+// Note: To use chartjs-node-canvas, first install it with:
+// npm install chartjs-node-canvas
+// If you still get errors, you may need to install additional dependencies:
+// npm install canvas chart.js
+import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 program.option("--rpc <rpc>", "Rpc");
 program.option("--startNum <startNum>", "start num");
 program.option("--endNum <endNum>", "end num");
 program.option("--miner <miner>", "miner", "");
 program.option("--num <Num>", "validator num", 21);
+program.option("--size <Num>", "size", 100);
 program.option("--turnLength <Num>", "the consecutive block length", 8);
 program.option("--topNum <Num>", "top num of address to be displayed", 20);
 program.option("--blockNum <Num>", "block num", 0);
@@ -27,18 +33,20 @@ function printUsage() {
     console.log("  GetKeyParameters: dump some key governance parameter");
     console.log("  GetMevStatus: get mev blocks of a block range");
     console.log("  GetLargeTxs: get large txs of a block range");
+    console.log("  DumpTrafficVolume: dump traffic volume of a block range");
     console.log("\nOptions:");
     console.log("  --rpc       specify the url of RPC endpoint");
     console.log("  --startNum  the start block number");
     console.log("  --endNum    the end block number");
     console.log("  --miner     the miner address");
     console.log("  --num       the number of blocks to be checked");
+    console.log("  --size      the size of blocks to be checked");
     console.log("  --topNum    the topNum of blocks to be checked");
     console.log("  --blockNum  the block number to be checked");
     console.log("\nExample:");
     // mainnet https://bsc-mainnet.nodereal.io/v1/454e504917db4f82b756bd0cf6317dce
     console.log("  node getchainstatus.js GetMaxTxCountInBlockRange --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000005");
-    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 4");
+    console.log("  node getchainstatus.js GetBinaryVersion --rpc https://bsc-testnet-dataseed.bnbchain.org --num 21 --turnLength 8");
     console.log("  node getchainstatus.js GetTopAddr --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010 --topNum 10");
     console.log("  node getchainstatus.js GetSlashCount --rpc https://bsc-testnet-dataseed.bnbchain.org --blockNum 40000001"); // default: latest block
     console.log("  node getchainstatus.js GetPerformanceData --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
@@ -47,7 +55,8 @@ function printUsage() {
     console.log("  node getchainstatus.js GetKeyParameters --rpc https://bsc-testnet-dataseed.bnbchain.org"); // default: latest block
     console.log("  node getchainstatus.js GetEip7623 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
     console.log("  node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
-    console.log("  node getchainstatus.js GetLargeTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --num 100 --gasUsedThreshold 5000000");
+    console.log("  node getchainstatus.js GetLargeTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --size 100 --gasUsedThreshold 5000000");
+    console.log("  node getchainstatus.js DumpTrafficVolume --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --size 100");
 }
 
 program.usage = printUsage;
@@ -823,13 +832,13 @@ async function getMevStatus() {
 // 11.cmd: "getLargeTxs", usage:
 // node getchainstatus.js GetLargeTxs \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
-//      --startNum 40000001  --num 100 \
+//      --startNum 40000001  --size 100 \
 //      --gasUsedThreshold 5000000
 async function getLargeTxs() {
     const startTime = Date.now();
     const gasUsedThreshold = program.gasUsedThreshold;
     const startBlock = parseInt(program.startNum);
-    const size = parseInt(program.num) || 100;
+    const size = parseInt(program.size) || 100;
     
     let actualStartBlock = startBlock;
     if (isNaN(startBlock) || startBlock === 0) {
@@ -939,6 +948,162 @@ async function getLargeTxs() {
     console.log(`Found ${largeTxCount} large transactions in ${duration.toFixed(2)} seconds`);
 }
 
+// 12.cmd: "DumpTrafficVolume", usage:
+// node getchainstatus.js DumpTrafficVolume \
+//      --rpc https://bsc-testnet-dataseed.bnbchain.org \
+//      --startNum 40000001  --endNum 40000010
+async function dumpTrafficVolume() {   
+    const startBlock = parseInt(program.startNum);
+    const size = parseInt(program.size) || 100;
+    
+    let actualStartBlock = startBlock;
+    let startTime = 0;
+    if (isNaN(startBlock) || startBlock === 0) {
+        actualStartBlock = await provider.getBlockNumber() - size;
+    }
+    const endBlock = actualStartBlock + size;
+
+    let block = await provider.getBlock(actualStartBlock);
+    startTime = block.date.getTime() / 1000;
+    let endTime = startTime;
+
+    console.log(`Dumping traffic volume for blocks ${actualStartBlock} to ${endBlock-1}`);
+    const BATCH_SIZE = 20;
+    let result = [];
+    for (let batchStart = actualStartBlock; batchStart < endBlock; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, endBlock);
+        console.log(`Processing batch from ${batchStart} to ${batchEnd-1}`);
+        const blockPromises = [];
+        for (let i = batchStart; i < batchEnd; i++) {
+            blockPromises.push(provider.getBlock(i, true));
+        }
+        const blocks = await Promise.all(blockPromises);
+        for (const block of blocks) {
+            const txs = block.transactions;
+            const gasUsed = block.gasUsed;
+            const time = block.timestamp;
+            if (time > endTime) {
+                endTime = time;
+            }
+            result.push({
+                blockNumber: block.number,
+                txs: txs.length,
+                gasUsed: Number(gasUsed),
+                time: time
+            });
+        }
+    }
+    let dataPerMinute = new Map();
+    for (const item of result) {
+        let itemIndex = Math.floor((item.time - startTime) / 60);
+        if (dataPerMinute.has(itemIndex)) {
+            dataPerMinute.set(itemIndex, {
+                    txs: dataPerMinute.get(itemIndex).txs + item.txs, 
+                    gasUsed: dataPerMinute.get(itemIndex).gasUsed + item.gasUsed,
+                    blocks: dataPerMinute.get(itemIndex).blocks + 1
+                });
+        } else {
+            dataPerMinute.set(itemIndex, {
+                txs: item.txs,
+                gasUsed: item.gasUsed,
+                blocks: 1
+            });
+        }
+    }
+    let baseTime = startTime;
+    for (const [key, value] of dataPerMinute.entries()) {
+        const timestamp = baseTime + key * 60;
+        const date = new Date(timestamp * 1000);
+        const blocks = value.blocks;
+        console.log(date.toISOString(), value.txs/blocks, value.gasUsed/blocks);
+    }
+    // Generate chart using Chart.js
+
+    // Prepare data for chart
+    const timeLabels = [];
+    const txsData = [];
+    const gasData = [];
+
+    for (const [key, value] of dataPerMinute.entries()) {
+        const timestamp = baseTime + key * 60;
+        const date = new Date(timestamp * 1000);
+        const blocks = value.blocks;
+        timeLabels.push(date.toISOString().slice(11,16)); // HH:MM format
+        txsData.push(value.txs/blocks);
+        gasData.push(value.gasUsed/blocks/1000000); // Convert to millions
+    }
+
+    // Create chart
+    const width = 800;
+    const height = 400;
+    const chartCallback = (ChartJS) => {
+        ChartJS.defaults.responsive = true;
+        ChartJS.defaults.maintainAspectRatio = false;
+    };
+    const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, chartCallback });
+
+    const configuration = {
+        type: 'line',
+        data: {
+            labels: timeLabels,
+            datasets: [
+                {
+                    label: 'Transactions per Block',
+                    data: txsData,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Gas Used per Block (millions)',
+                    data: gasData,
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Transactions per Block'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Gas Used per Block (millions)'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Block Traffic Analysis'
+                }
+            }
+        }
+    };
+
+    // Generate and save chart with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `traffic_analysis_${timestamp}.png`;
+    const image = await chartJSNodeCanvas.renderToBuffer(configuration);
+    fs.writeFileSync(`./${filename}`, image);
+    console.log(`\nChart has been saved as ${filename}`);
+}
+
 const main = async () => {
     if (process.argv.length <= 2) {
         console.error("invalid process.argv.length", process.argv.length);
@@ -972,6 +1137,8 @@ const main = async () => {
         await getMevStatus();
     } else if (cmd === "GetLargeTxs") {
         await getLargeTxs();
+    } else if (cmd === "DumpTrafficVolume") {
+        await dumpTrafficVolume();
     } else {
         console.log("unsupported cmd", cmd);
         printUsage();

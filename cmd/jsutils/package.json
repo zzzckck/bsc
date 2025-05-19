@@ -10,6 +10,7 @@
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx}\""
   },
   "dependencies": {
+    "chartjs-node-canvas": "^5.0.0",
     "commander": "^3.0.1",
     "ethers": "^6.2.3"
   },
