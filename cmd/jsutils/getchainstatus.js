@@ -56,7 +56,7 @@ function printUsage() {
     console.log("  node getchainstatus.js GetEip7623 --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
     console.log("  node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --endNum 40000010");
     console.log("  node getchainstatus.js GetLargeTxs --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --size 100 --gasUsedThreshold 5000000");
-    console.log("  node getchainstatus.js DumpTrafficVolume --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --size 100");
+    console.log("  node getchainstatus.js DumpTrafficVolume --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001  --size 10000");
 }
 
 program.usage = printUsage;
@@ -951,10 +951,10 @@ async function getLargeTxs() {
 // 12.cmd: "DumpTrafficVolume", usage:
 // node getchainstatus.js DumpTrafficVolume \
 //      --rpc https://bsc-testnet-dataseed.bnbchain.org \
-//      --startNum 40000001  --endNum 40000010
-async function dumpTrafficVolume() {   
+//      --startNum 40000001  --size 10000
+async function dumpTrafficVolume() {
     const startBlock = parseInt(program.startNum);
-    const size = parseInt(program.size) || 100;
+    const size = parseInt(program.size) || 10000;
     
     let actualStartBlock = startBlock;
     let startTime = 0;
@@ -968,7 +968,7 @@ async function dumpTrafficVolume() {
     let endTime = startTime;
 
     console.log(`Dumping traffic volume for blocks ${actualStartBlock} to ${endBlock-1}`);
-    const BATCH_SIZE = 20;
+    const BATCH_SIZE = 1000;
     let result = [];
     for (let batchStart = actualStartBlock; batchStart < endBlock; batchStart += BATCH_SIZE) {
         const batchEnd = Math.min(batchStart + BATCH_SIZE, endBlock);
