@@ -954,25 +954,29 @@ async function getLargeTxs() {
 //      --startNum 40000001  --size 10000
 async function dumpTrafficVolume() {
     const startBlock = parseInt(program.startNum);
-    const size = parseInt(program.size) || 10000;
+    const size = parseInt(program.size) || 100;
     
     let actualStartBlock = startBlock;
     let startTime = 0;
     if (isNaN(startBlock) || startBlock === 0) {
         actualStartBlock = await provider.getBlockNumber() - size;
     }
-    const endBlock = actualStartBlock + size;
+    const endBlockNumber = actualStartBlock + size;
 
     let block = await provider.getBlock(actualStartBlock);
-    startTime = block.date.getTime() / 1000;
-    let endTime = startTime;
+    const startBlockDate = new Date(block.timestamp * 1000);
 
-    console.log(`Dumping traffic volume for blocks ${actualStartBlock} to ${endBlock-1}`);
-    const BATCH_SIZE = 1000;
+    let endBlock = await provider.getBlock(endBlockNumber);
+    const endBlockDate = new Date(endBlock.timestamp * 1000);
+
+    console.log(`Dumping traffic volume for blocks ${actualStartBlock}(${startBlockDate.toISOString()})
+         to ${endBlockNumber-1}(${endBlockDate.toISOString()})`);
+    const BATCH_SIZE = 50;
+    const processStartTime = Date.now();
     let result = [];
-    for (let batchStart = actualStartBlock; batchStart < endBlock; batchStart += BATCH_SIZE) {
-        const batchEnd = Math.min(batchStart + BATCH_SIZE, endBlock);
-        console.log(`Processing batch from ${batchStart} to ${batchEnd-1}`);
+    for (let batchStart = actualStartBlock; batchStart < endBlockNumber; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, endBlockNumber);
+        const batchStartTime = Date.now();
         const blockPromises = [];
         for (let i = batchStart; i < batchEnd; i++) {
             blockPromises.push(provider.getBlock(i, true));
@@ -981,18 +985,20 @@ async function dumpTrafficVolume() {
         for (const block of blocks) {
             const txs = block.transactions;
             const gasUsed = block.gasUsed;
-            const time = block.timestamp;
-            if (time > endTime) {
-                endTime = time;
-            }
             result.push({
                 blockNumber: block.number,
                 txs: txs.length,
                 gasUsed: Number(gasUsed),
-                time: time
+                time: block.timestamp
             });
         }
+        const batchEndTime = Date.now();
+        const batchDuration = (batchEndTime - batchStartTime) / 1000;
+        console.log(`Processing batch from ${batchStart} to ${batchEnd-1}, took ${batchDuration.toFixed(2)} seconds`);
     }
+    const processEndTime = Date.now();
+    const processDuration = (processEndTime - processStartTime) / 1000;
+    console.log(`Total processing time: ${processDuration.toFixed(2)} seconds`);
     let dataPerMinute = new Map();
     for (const item of result) {
         let itemIndex = Math.floor((item.time - startTime) / 60);
