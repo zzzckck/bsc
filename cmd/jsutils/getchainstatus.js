@@ -973,32 +973,40 @@ async function dumpTrafficVolume() {
          to ${endBlockNumber-1}(${endBlockDate.toISOString()})`);
     const BATCH_SIZE = 50;
     const processStartTime = Date.now();
-    let result = [];
+    // let result = [];
+    let totalGasUsed = 0;
+    let totalGasLimit = 0;
     for (let batchStart = actualStartBlock; batchStart < endBlockNumber; batchStart += BATCH_SIZE) {
         const batchEnd = Math.min(batchStart + BATCH_SIZE, endBlockNumber);
         const batchStartTime = Date.now();
         const blockPromises = [];
         for (let i = batchStart; i < batchEnd; i++) {
-            blockPromises.push(provider.getBlock(i, true));
+            blockPromises.push(provider.send("eth_getHeaderByNumber", [ethers.toQuantity(i)]));
         }
-        const blocks = await Promise.all(blockPromises);
-        for (const block of blocks) {
-            const txs = block.transactions;
-            const gasUsed = block.gasUsed;
+        const blockHeaders = await Promise.all(blockPromises);
+        for (const header of blockHeaders) {
+            totalGasUsed += Number(header.gasUsed);
+            totalGasLimit += Number(header.gasLimit);
+/*
             result.push({
-                blockNumber: block.number,
-                txs: txs.length,
-                gasUsed: Number(gasUsed),
-                time: block.timestamp
+                blockNumber: header.number,
+                gasUsed: Number(header.gasUsed),
+                gasLimit: Number(header.gasLimit),
+                time: header.timestamp
             });
+*/
         }
         const batchEndTime = Date.now();
         const batchDuration = (batchEndTime - batchStartTime) / 1000;
         console.log(`Processing batch from ${batchStart} to ${batchEnd-1}, took ${batchDuration.toFixed(2)} seconds`);
     }
+    console.log(`Total gas used: ${totalGasUsed}`);
+    console.log(`Total gas limit: ${totalGasLimit}`);
+    console.log(`Gas Utilization: ${totalGasUsed / totalGasLimit}`);
     const processEndTime = Date.now();
     const processDuration = (processEndTime - processStartTime) / 1000;
     console.log(`Total processing time: ${processDuration.toFixed(2)} seconds`);
+/*
     let dataPerMinute = new Map();
     for (const item of result) {
         let itemIndex = Math.floor((item.time - startTime) / 60);
@@ -1108,6 +1116,7 @@ async function dumpTrafficVolume() {
     const image = await chartJSNodeCanvas.renderToBuffer(configuration);
     fs.writeFileSync(`./${filename}`, image);
     console.log(`\nChart has been saved as ${filename}`);
+    */
 }
 
 const main = async () => {
