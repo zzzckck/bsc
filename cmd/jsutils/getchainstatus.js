@@ -957,7 +957,7 @@ async function dumpTrafficVolume() {
     const size = parseInt(program.size) || 100;
     
     let actualStartBlock = startBlock;
-    let startTime = 0;
+    
     if (isNaN(startBlock) || startBlock === 0) {
         actualStartBlock = await provider.getBlockNumber() - size;
     }
@@ -965,15 +965,16 @@ async function dumpTrafficVolume() {
 
     let block = await provider.getBlock(actualStartBlock);
     const startBlockDate = new Date(block.timestamp * 1000);
+    let startBlockTime = block.timestamp;
 
     let endBlock = await provider.getBlock(endBlockNumber);
     const endBlockDate = new Date(endBlock.timestamp * 1000);
+    // let endBlockTime = endBlock.timestamp;
 
-    console.log(`Dumping traffic volume for blocks ${actualStartBlock}(${startBlockDate.toISOString()})
-         to ${endBlockNumber-1}(${endBlockDate.toISOString()})`);
-    const BATCH_SIZE = 50;
+    console.log(`DumpTrafficVolume: ${actualStartBlock}(${startBlockDate.toISOString()}) to ${endBlockNumber-1}(${endBlockDate.toISOString()})`);
+    const BATCH_SIZE = 200;
     const processStartTime = Date.now();
-    // let result = [];
+    let result = [];
     let totalGasUsed = 0;
     let totalGasLimit = 0;
     for (let batchStart = actualStartBlock; batchStart < endBlockNumber; batchStart += BATCH_SIZE) {
@@ -987,14 +988,12 @@ async function dumpTrafficVolume() {
         for (const header of blockHeaders) {
             totalGasUsed += Number(header.gasUsed);
             totalGasLimit += Number(header.gasLimit);
-/*
             result.push({
                 blockNumber: header.number,
                 gasUsed: Number(header.gasUsed),
                 gasLimit: Number(header.gasLimit),
                 time: header.timestamp
             });
-*/
         }
         const batchEndTime = Date.now();
         const batchDuration = (batchEndTime - batchStartTime) / 1000;
@@ -1006,33 +1005,32 @@ async function dumpTrafficVolume() {
     const processEndTime = Date.now();
     const processDuration = (processEndTime - processStartTime) / 1000;
     console.log(`Total processing time: ${processDuration.toFixed(2)} seconds`);
-/*
-    let dataPerMinute = new Map();
+
+    let dataPerHour = new Map();
     for (const item of result) {
-        let itemIndex = Math.floor((item.time - startTime) / 60);
-        if (dataPerMinute.has(itemIndex)) {
-            dataPerMinute.set(itemIndex, {
-                    txs: dataPerMinute.get(itemIndex).txs + item.txs, 
-                    gasUsed: dataPerMinute.get(itemIndex).gasUsed + item.gasUsed,
-                    blocks: dataPerMinute.get(itemIndex).blocks + 1
+        let itemIndex = Math.floor((item.time - startBlockTime) / 3600);
+        if (dataPerHour.has(itemIndex)) {
+            dataPerHour.set(itemIndex, {
+                    gasUsed: dataPerHour.get(itemIndex).gasUsed + item.gasUsed,
+                    gasLimit: dataPerHour.get(itemIndex).gasLimit + item.gasLimit,
+                    blocks: dataPerHour.get(itemIndex).blocks + 1
                 });
         } else {
-            dataPerMinute.set(itemIndex, {
-                txs: item.txs,
+            dataPerHour.set(itemIndex, {
                 gasUsed: item.gasUsed,
+                gasLimit: item.gasLimit,
                 blocks: 1
             });
         }
     }
-    let baseTime = startTime;
-    for (const [key, value] of dataPerMinute.entries()) {
-        const timestamp = baseTime + key * 60;
+    let baseTime = startBlockTime;
+    for (const [key, value] of dataPerHour.entries()) {
+        const timestamp = baseTime + key * 3600;
         const date = new Date(timestamp * 1000);
-        const blocks = value.blocks;
-        console.log(date.toISOString(), value.txs/blocks, value.gasUsed/blocks);
+        console.log(date.toISOString(), value.gasUsed/value.gasLimit);
     }
     // Generate chart using Chart.js
-
+/*
     // Prepare data for chart
     const timeLabels = [];
     const txsData = [];
