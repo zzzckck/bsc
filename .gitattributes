@@ -1,3 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 *.sol linguist-language=Solidity
+.github/musl-cross/aarch64-linux-musl-cross.tgz filter=lfs diff=lfs merge=lfs -text
+.github/musl-cross/x86_64-linux-musl-cross.tgz filter=lfs diff=lfs merge=lfs -text
