@@ -819,8 +819,8 @@ async function getMevStatus() {
         for (const txData of txResults) {
             if (builderMap.has(txData.to)) {
                 const builder = builderMap.get(txData.to);
-                const builderKey = Object.keys(counts).find(key => builder.includes(key));
-
+                // const builderKey = Object.keys(counts).find(key => builder.includes(key));
+                const builderKey = builder;
                 if (builderKey) {
                     counts[builderKey]++;
                 }
