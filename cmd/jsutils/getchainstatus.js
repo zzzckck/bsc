@@ -247,19 +247,22 @@ const builderMap = new Map([
     ["0xb49f86586a840AB9920D2f340a85586E50FD30a2", "inblock eu"],
     ["0x0F6D8b72F3687de6f2824903a83B3ba13c0e88A0", "inblock us"],
     //      nodereal
-    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap x"],
+    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
     ["0xd0d56b330a0dea077208b96910ce452fd77e1b6f", "nodereal eu"],
     ["0x4f24ce4cd03a6503de97cf139af2c26347930b99", "nodereal us"],
     //      xzbuilder
     ["0x812720cb4639550D7BDb1d8F2be463F4a9663762", "xzbuilder"],
 
     // Chapel
-    ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
-    ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "nodereal ap y"],
-    // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
-    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor"],
+    // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"], mainnet covered
+    // ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap x"], mainnet covered
+    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor ap"],
+    ["0x95c8436143c82Ea4d3529A3ed8DDa9998F6daC5F", "blockrazor eu"],
+    ["0xb71Ba9e570ee20E983De1d5aE01baf5dCB4e4299", "blockrazor us"],
+    ["0xA8caEc0D68a90Ac971EA1aDEFA1747447e1f9871", "blockroute"],
+    ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "testnet fuji"],
     ["0x7b3ee856c98b1bb3689ef7f90477df2927fcbdb6",  "trustnet"],
-    ["0xA8caEc0D68a90Ac971EA1aDEFA1747447e1f9871",  "blockroute"],
+    ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
 ]);
 
 // 1.cmd: "GetMaxTxCountInBlockRange", usage:
