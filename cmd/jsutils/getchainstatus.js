@@ -752,20 +752,19 @@ async function getEip7623() {
 // # Analyze from specific block to latest
 // node getchainstatus.js GetMevStatus --rpc https://bsc-testnet-dataseed.bnbchain.org --startNum 40000001
 async function getMevStatus() {
-    let counts = {
-        local: 0,
-        blockrazor: 0,
-        puissant: 0,
-        blockroute: 0,
-        jetbldr: 0,
-        txboost: 0,
-        blockbus: 0,
-        darwin: 0,
-        inblock: 0,
-        nodereal: 0,
-        xzbuilder: 0,
-        trustnet: 0,
-    };
+    let counts = new Map([
+        ['local', 0],
+        ['blockrazor', 0],
+        ['puissant', 0],
+        ['blockroute', 0],
+        ['jetbldr', 0],
+        ['txboost', 0],
+        ['blockbus', 0],
+        ['darwin', 0],
+        ['inblock', 0],
+        ['nodereal', 0],
+        ['xzbuilder', 0],
+    ]);
 
     // Get the latest block number
     const latestBlock = await provider.getBlockNumber();
@@ -822,7 +821,7 @@ async function getMevStatus() {
                 // const builderKey = Object.keys(counts).find(key => builder.includes(key));
                 const builderKey = builder;
                 if (builderKey) {
-                    counts[builderKey]++;
+                    counts.set(builderKey, counts.get(builderKey) + 1);
                 }
 
                 mevBlock = true;
@@ -836,7 +835,7 @@ async function getMevStatus() {
         }
 
         if (!mevBlock) {
-            counts.local++;
+            counts.set('local', counts.get('local') + 1);
             console.log(
                 `blockNum: ${blockData.number.toString().padStart(8)}      ` +
                 `miner: ${miner.padEnd(maxMinerLength)}        ` +
@@ -850,8 +849,8 @@ async function getMevStatus() {
     console.log(`Range: [${startBlock}, ${endBlock}]`);
     console.log(`Total Blocks: ${total}`);
     console.log("\nBuilder Distribution:");
-    Object.entries(counts).forEach(([key, value]) => {
-        const ratio = (value *100 / total).toFixed(2);
+    counts.forEach((value, key) => {
+        const ratio = (value * 100 / total).toFixed(2);
         console.log(`${key.padEnd(10)}: ${value.toString().padStart(3)} blocks (${ratio}%)`);
     });
 }
