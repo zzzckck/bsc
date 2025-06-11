@@ -754,16 +754,6 @@ async function getEip7623() {
 async function getMevStatus() {
     let counts = new Map([
         ['local', 0],
-        ['blockrazor', 0],
-        ['puissant', 0],
-        ['blockroute', 0],
-        ['jetbldr', 0],
-        ['txboost', 0],
-        ['blockbus', 0],
-        ['darwin', 0],
-        ['inblock', 0],
-        ['nodereal', 0],
-        ['xzbuilder', 0],
     ]);
 
     // Get the latest block number
