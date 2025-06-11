@@ -821,6 +821,9 @@ async function getMevStatus() {
                 // const builderKey = Object.keys(counts).find(key => builder.includes(key));
                 const builderKey = builder;
                 if (builderKey) {
+                    if (!counts.has(builderKey)) {
+                        counts.set(builderKey, 0);
+                    }
                     counts.set(builderKey, counts.get(builderKey) + 1);
                 }
 
