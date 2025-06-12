@@ -254,13 +254,13 @@ const builderMap = new Map([
     ["0x812720cb4639550D7BDb1d8F2be463F4a9663762", "xzbuilder"],
 
     // Chapel
-    // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"], mainnet covered
     // ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap x"], mainnet covered
     ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor ap"],
     ["0x95c8436143c82Ea4d3529A3ed8DDa9998F6daC5F", "blockrazor eu"],
     ["0xb71Ba9e570ee20E983De1d5aE01baf5dCB4e4299", "blockrazor us"],
     ["0xA8caEc0D68a90Ac971EA1aDEFA1747447e1f9871", "blockroute"],
-    ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "testnet fuji"],
+    ["0x5EC60f73f938e36400ec3CC3Ff4d7a7703F7c005", "fuji us"],
+    ["0x6C98EB21139F6E12db5b78a4AeD4d8eBA147FB7b", "nodereal eu"],
     ["0x7b3ee856c98b1bb3689ef7f90477df2927fcbdb6",  "trustnet"],
     ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
 ]);
