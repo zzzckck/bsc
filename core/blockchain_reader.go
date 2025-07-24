@@ -197,10 +197,14 @@ func (bc *BlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
 	if block == nil {
 		return nil
 	}
+	log.Info("GetBlock", "hash", hash, "number", number, "mark 2")
 	sidecars := rawdb.ReadBlobSidecars(bc.db, hash, number)
+	log.Info("GetBlock", "hash", hash, "number", number, "mark 3")
 	block = block.WithSidecars(sidecars)
+	log.Info("GetBlock", "hash", hash, "number", number, "mark 3.1")
 	// Cache the found block for next time and return
 	bc.blockCache.Add(block.Hash(), block)
+	log.Info("GetBlock", "hash", hash, "number", number, "mark 4")
 	return block
 }
 
