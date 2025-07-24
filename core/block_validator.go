@@ -23,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -51,27 +52,33 @@ func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain) *Bloc
 // validated at this point.
 func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	// Check whether the block is already imported.
+	log.Info("ValidateBody", "block", block.Number(), "hash", block.Hash())
 	if v.bc.HasBlockAndState(block.Hash(), block.NumberU64()) {
 		return ErrKnownBlock
 	}
+	log.Info("ValidateBody mark 1")
 	// Header validity is known at this point. Here we verify that uncles, transactions
 	// and withdrawals given in the block body match the header.
 	header := block.Header()
 	if err := v.bc.engine.VerifyUncles(v.bc, block); err != nil {
 		return err
 	}
+	log.Info("ValidateBody mark 2")
 	if hash := types.CalcUncleHash(block.Uncles()); hash != header.UncleHash {
 		return fmt.Errorf("uncle root hash mismatch (header value %x, calculated %x)", header.UncleHash, hash)
 	}
-
+	log.Info("ValidateBody mark 3")
 	validateFuns := []func() error{
 		func() error {
+			log.Info("ValidateBody validateFuns DeriveSha")
 			if hash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil)); hash != header.TxHash {
 				return fmt.Errorf("transaction root hash mismatch: have %x, want %x", hash, header.TxHash)
 			}
+			log.Info("ValidateBody validateFuns DeriveSha done")
 			return nil
 		},
 		func() error {
+			log.Info("ValidateBody validateFuns Withdrawals")
 			// Withdrawals are present after the Shanghai fork.
 			if header.WithdrawalsHash != nil {
 				// Withdrawals list must be present in body after Shanghai.
@@ -110,15 +117,18 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 					return errors.New("data blobs present in block body")
 				}
 			}
+			log.Info("ValidateBody validateFuns Withdrawals done")
 			return nil
 		},
 		func() error {
+			log.Info("ValidateBody validateFuns HasBlockAndState")
 			if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
 				if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
 					return consensus.ErrUnknownAncestor
 				}
 				return consensus.ErrPrunedAncestor
 			}
+			log.Info("ValidateBody validateFuns HasBlockAndState done")
 			return nil
 		},
 	}
@@ -135,6 +145,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 			return r
 		}
 	}
+	log.Info("ValidateBody done")
 	return nil
 }
 

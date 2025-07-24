@@ -2124,12 +2124,13 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 	var witness *stateless.Witness
 	log.Info("insertChain", "block", block.Number(), "len", len(chain))
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
+		log.Info("insertChain", "block", block.Number(), "hash", block.Hash())
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during block processing")
 			break
 		}
-		log.Info("insertChain", "block", block.Number(), "hash", block.Hash())
+		log.Info("insertChain mark 0")
 		// If the block is known (in the middle of the chain), it's a special case for
 		// Clique blocks where they can share state among each other, so importing an
 		// older block might complete the state of the subsequent one. In this case,
@@ -2278,7 +2279,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		bc.chainBlockFeed.Send(ChainHeadEvent{block.Header()})
 		log.Info("insertChain mark 8")
 	}
-
+	log.Info("insertChain done", "len", len(chain))
 	// Any blocks remaining here? The only ones we care about are the future ones
 	if block != nil && errors.Is(err, consensus.ErrFutureBlock) {
 		if err := bc.addFutureBlock(block); err != nil {
