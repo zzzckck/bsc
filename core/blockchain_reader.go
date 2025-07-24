@@ -186,10 +186,13 @@ func (bc *BlockChain) HasFastBlock(hash common.Hash, number uint64) bool {
 // GetBlock retrieves a block & sidecars from the database by hash and number,
 // caching it if found.
 func (bc *BlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
+	log.Info("GetBlock", "hash", hash, "number", number)
 	// Short circuit if the block's already in the cache, retrieve otherwise
 	if block, ok := bc.blockCache.Get(hash); ok {
+		log.Info("GetBlock ok", "hash", hash, "number", number, "block", block.Number())
 		return block
 	}
+	log.Info("GetBlock", "hash", hash, "number", number, "mark 1")
 	block := rawdb.ReadBlock(bc.db, hash, number)
 	if block == nil {
 		return nil
@@ -381,11 +384,14 @@ func (bc *BlockChain) HasState(hash common.Hash) bool {
 // HasBlockAndState checks if a block and associated state trie is fully present
 // in the database or not, caching it if present.
 func (bc *BlockChain) HasBlockAndState(hash common.Hash, number uint64) bool {
+	log.Info("HasBlockAndState", "hash", hash, "number", number)
 	// Check first that the block itself is known
 	block := bc.GetBlock(hash, number)
 	if block == nil {
+		log.Info("HasBlockAndState", "hash", hash, "number", number, "block", "nil")
 		return false
 	}
+	log.Info("HasBlockAndState", "hash", hash, "number", number, "block", block.Number(), "mark 1")
 	return bc.HasState(block.Root())
 }
 
