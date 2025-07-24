@@ -185,7 +185,7 @@ func (db *Database) Close() error {
 	return nil
 }
 
-func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv, blockHistory uint64) error {
+func (db *Database) SetupFreezerEnv(env *ethdb.FreezerEnv) error {
 	panic("not supported")
 }
 

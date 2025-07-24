@@ -25,7 +25,9 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -72,6 +74,7 @@ type Freezer struct {
 	tables       map[string]*freezerTable // Data tables for storing everything
 	instanceLock *flock.Flock             // File-system lock to prevent double opens
 	closeOnce    sync.Once
+	offset       uint64 // Starting BlockNumber in current freezer
 }
 
 // NewFreezer creates a freezer instance for maintaining immutable ordered
@@ -80,7 +83,7 @@ type Freezer struct {
 // The 'tables' argument defines the data tables. If the value of a map
 // entry is true, snappy compression is disabled for the table.
 // additionTables indicates the new add tables for freezerDB, it has some special rules.
-func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize uint32, tables map[string]bool) (*Freezer, error) {
+func NewFreezer(datadir string, namespace string, readonly bool, offset uint64, maxTableSize uint32, tables map[string]bool) (*Freezer, error) {
 	// Create the initial freezer object
 	var (
 		readMeter  = metrics.NewRegisteredMeter(namespace+"ancient/read", nil)
@@ -120,6 +123,7 @@ func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 		readonly:     readonly,
 		tables:       make(map[string]*freezerTable),
 		instanceLock: lock,
+		offset:       offset,
 	}
 
 	// Create the tables.
@@ -159,10 +163,15 @@ func NewFreezer(datadir string, namespace string, readonly bool, maxTableSize ui
 		return nil, err
 	}
 
+	// Some blocks in ancientDB may have already been frozen and been pruned, so adding the offset to
+	// represent the absolute number of blocks already frozen.
+	freezer.frozen.Add(offset)
+	freezer.tail.Add(offset)
+
 	// Create the write batch.
 	freezer.writeBatch = newFreezerBatch(freezer)
 
-	log.Info("Opened ancient database", "database", datadir, "readonly", readonly, "tail", freezer.tail.Load(), "frozen", freezer.frozen.Load())
+	log.Info("Opened ancient database", "database", datadir, "readonly", readonly, "frozen", freezer.frozen.Load())
 	return freezer, nil
 }
 
@@ -211,7 +220,7 @@ func (f *Freezer) AncientDatadir() (string, error) {
 // in the freezer.
 func (f *Freezer) HasAncient(kind string, number uint64) (bool, error) {
 	if table := f.tables[kind]; table != nil {
-		return table.has(number), nil
+		return table.has(number - f.offset), nil
 	}
 	return false, nil
 }
@@ -219,7 +228,7 @@ func (f *Freezer) HasAncient(kind string, number uint64) (bool, error) {
 // Ancient retrieves an ancient binary blob from the append-only immutable files.
 func (f *Freezer) Ancient(kind string, number uint64) ([]byte, error) {
 	if table := f.tables[kind]; table != nil {
-		return table.Retrieve(number)
+		return table.Retrieve(number - f.offset)
 	}
 	return nil, errUnknownTable
 }
@@ -232,7 +241,7 @@ func (f *Freezer) Ancient(kind string, number uint64) ([]byte, error) {
 //   - if maxBytes is not specified, 'count' items will be returned if they are present.
 func (f *Freezer) AncientRange(kind string, start, count, maxBytes uint64) ([][]byte, error) {
 	if table := f.tables[kind]; table != nil {
-		return table.RetrieveItems(start, count, maxBytes)
+		return table.RetrieveItems(start-f.offset, count, maxBytes)
 	}
 	return nil, errUnknownTable
 }
@@ -245,17 +254,17 @@ func (f *Freezer) Ancients() (uint64, error) {
 func (f *Freezer) TableAncients(kind string) (uint64, error) {
 	f.writeLock.RLock()
 	defer f.writeLock.RUnlock()
-	return f.tables[kind].items.Load(), nil
+	return f.tables[kind].items.Load() + f.offset, nil
 }
 
 // ItemAmountInAncient returns the actual length of current ancientDB.
 func (f *Freezer) ItemAmountInAncient() (uint64, error) {
-	return f.frozen.Load(), nil
+	return f.frozen.Load() - atomic.LoadUint64(&f.offset), nil
 }
 
 // AncientOffSet returns the offset of current ancientDB.
 func (f *Freezer) AncientOffSet() uint64 {
-	return f.tail.Load()
+	return atomic.LoadUint64(&f.offset)
 }
 
 // Tail returns the number of first stored item in the freezer.
@@ -333,7 +342,7 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 		return oitems, nil
 	}
 	for kind, table := range f.tables {
-		err := table.truncateHead(items)
+		err := table.truncateHead(items - f.offset)
 		if err == errTruncationBelowTail {
 			// This often happens in chain rewinds, but the blob table is special.
 			// It has the same head, but a different tail from other tables (like bodies, receipts).
@@ -341,7 +350,7 @@ func (f *Freezer) TruncateHead(items uint64) (uint64, error) {
 			if kind != ChainFreezerBlobSidecarTable {
 				return 0, err
 			}
-			nt, err := table.resetItems(items)
+			nt, err := table.resetItems(items - f.offset)
 			if err != nil {
 				return 0, err
 			}
@@ -369,7 +378,7 @@ func (f *Freezer) TruncateTail(tail uint64) (uint64, error) {
 		return old, nil
 	}
 	for _, table := range f.tables {
-		if err := table.truncateTail(tail); err != nil {
+		if err := table.truncateTail(tail - f.offset); err != nil {
 			return 0, err
 		}
 	}
@@ -501,6 +510,49 @@ func (f *Freezer) repair() error {
 	return nil
 }
 
+// delete leveldb data that save to ancientdb, split from func freeze
+func gcKvStore(db ethdb.KeyValueStore, ancients []common.Hash, first uint64, frozen uint64, start time.Time) {
+	// Wipe out all data from the active database
+	batch := db.NewBatch()
+	for i := 0; i < len(ancients); i++ {
+		// Always keep the genesis block in active database
+		if blockNumber := first + uint64(i); blockNumber != 0 {
+			DeleteBlockWithoutNumber(batch, ancients[i], blockNumber)
+			DeleteCanonicalHash(batch, blockNumber)
+		}
+	}
+	if err := batch.Write(); err != nil {
+		log.Crit("Failed to delete frozen canonical blocks", "err", err)
+	}
+	batch.Reset()
+
+	// Wipe out side chains also and track dangling side chians
+	var dangling []common.Hash
+	for number := first; number < frozen; number++ {
+		// Always keep the genesis block in active database
+		if number != 0 {
+			dangling = ReadAllHashes(db, number)
+			for _, hash := range dangling {
+				log.Trace("Deleting side chain", "number", number, "hash", hash)
+				DeleteBlock(batch, hash, number)
+			}
+		}
+	}
+	if err := batch.Write(); err != nil {
+		log.Crit("Failed to delete frozen side blocks", "err", err)
+	}
+	batch.Reset()
+
+	// Log something friendly for the user
+	context := []interface{}{
+		"blocks", frozen - first, "elapsed", common.PrettyDuration(time.Since(start)), "number", frozen - 1,
+	}
+	if n := len(ancients); n > 0 {
+		context = append(context, []interface{}{"hash", ancients[n-1]}...)
+	}
+	log.Info("Deep froze chain segment", context...)
+}
+
 // TruncateTableTail will truncate certain table to new tail
 func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	if f.readonly {
@@ -513,13 +565,16 @@ func (f *Freezer) TruncateTableTail(kind string, tail uint64) (uint64, error) {
 	if !slices.Contains(additionTables, kind) {
 		return 0, errors.New("only new added table could be truncated independently")
 	}
+	if tail < f.offset {
+		return 0, errors.New("the input tail&head is less than offset")
+	}
 	t, exist := f.tables[kind]
 	if !exist {
 		return 0, errors.New("you reset a non-exist table")
 	}
 
-	old := t.itemHidden.Load()
-	if err := t.truncateTail(tail); err != nil {
+	old := t.itemHidden.Load() + f.offset
+	if err := t.truncateTail(tail - f.offset); err != nil {
 		return 0, err
 	}
 	return old, nil
@@ -548,7 +603,7 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 	if err := f.SyncAncient(); err != nil {
 		return err
 	}
-	nt, err := t.resetItems(startAt)
+	nt, err := t.resetItems(startAt - f.offset)
 	if err != nil {
 		return err
 	}
@@ -561,33 +616,11 @@ func (f *Freezer) ResetTable(kind string, startAt uint64, onlyEmpty bool) error 
 		}
 		return err
 	}
+
+	f.frozen.Add(f.offset)
+	f.tail.Add(f.offset)
 	f.writeBatch = newFreezerBatch(f)
 	log.Debug("Reset Table", "kind", kind, "tail", f.tables[kind].itemHidden.Load(), "frozen", f.tables[kind].items.Load())
-	return nil
-}
-
-// resetTailMeta will reset tail meta with legacyOffset
-// Caution: the freezer cannot be used anymore, it will sync/close all data files
-func (f *Freezer) resetTailMeta(legacyOffset uint64) error {
-	if f.readonly {
-		return errReadOnly
-	}
-
-	// if the tail is already reset, just skip
-	if f.tail.Load() == legacyOffset {
-		return nil
-	}
-
-	if f.tail.Load() > 0 {
-		return errors.New("the freezer's tail > 0, cannot reset again")
-	}
-	f.writeLock.Lock()
-	defer f.writeLock.Unlock()
-	for _, t := range f.tables {
-		if err := t.resetTailMeta(legacyOffset); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

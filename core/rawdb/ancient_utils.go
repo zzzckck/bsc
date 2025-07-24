@@ -113,7 +113,7 @@ func inspectFreezers(db ethdb.Database) ([]freezerInfo, error) {
 				continue
 			}
 
-			f, err := NewStateFreezer(datadir, freezer == VerkleStateFreezerName, true)
+			f, err := NewStateFreezer(datadir, freezer == VerkleStateFreezerName, true, 0)
 			if err != nil {
 				continue // might be possible the state freezer is not existent
 			}

@@ -33,7 +33,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		RangeLimit              bool
 		TxLookupLimit           uint64 `toml:",omitempty"`
 		TransactionHistory      uint64 `toml:",omitempty"`
-		BlockHistory            uint64 `toml:",omitempty"`
 		StateHistory            uint64 `toml:",omitempty"`
 		StateScheme             string `toml:",omitempty"`
 		PathSyncFlush           bool   `toml:",omitempty"`
@@ -87,7 +86,6 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RangeLimit = c.RangeLimit
 	enc.TxLookupLimit = c.TxLookupLimit
 	enc.TransactionHistory = c.TransactionHistory
-	enc.BlockHistory = c.BlockHistory
 	enc.StateHistory = c.StateHistory
 	enc.StateScheme = c.StateScheme
 	enc.PathSyncFlush = c.PathSyncFlush
@@ -145,7 +143,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		RangeLimit              *bool
 		TxLookupLimit           *uint64 `toml:",omitempty"`
 		TransactionHistory      *uint64 `toml:",omitempty"`
-		BlockHistory            *uint64 `toml:",omitempty"`
 		StateHistory            *uint64 `toml:",omitempty"`
 		StateScheme             *string `toml:",omitempty"`
 		PathSyncFlush           *bool   `toml:",omitempty"`
@@ -233,9 +230,6 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.TransactionHistory != nil {
 		c.TransactionHistory = *dec.TransactionHistory
-	}
-	if dec.BlockHistory != nil {
-		c.BlockHistory = *dec.BlockHistory
 	}
 	if dec.StateHistory != nil {
 		c.StateHistory = *dec.StateHistory

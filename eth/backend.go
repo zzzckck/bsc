@@ -235,7 +235,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	if err = freezeDb.SetupFreezerEnv(&ethdb.FreezerEnv{
 		ChainCfg:         chainConfig,
 		BlobExtraReserve: config.BlobExtraReserve,
-	}, config.BlockHistory); err != nil {
+	}); err != nil {
 		return nil, err
 	}
 

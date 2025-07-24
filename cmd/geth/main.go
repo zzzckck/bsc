@@ -107,7 +107,6 @@ var (
 		utils.SnapshotFlag,
 		utils.TxLookupLimitFlag, // deprecated
 		utils.TransactionHistoryFlag,
-		utils.BlockHistoryFlag,
 		utils.StateHistoryFlag,
 		utils.PathDBSyncFlag,
 		utils.JournalFileFlag,
@@ -133,7 +132,7 @@ var (
 		utils.CacheEnableSharedStorageFlag,
 		utils.CachePreimagesFlag,
 		utils.MultiDataBaseFlag,
-		utils.PruneAncientDataFlag, // deprecated
+		utils.PruneAncientDataFlag,
 		utils.CacheLogSizeFlag,
 		utils.FDLimitFlag,
 		utils.CryptoKZGFlag,
@@ -176,6 +175,7 @@ var (
 		utils.GpoMaxGasPriceFlag,
 		utils.GpoIgnoreGasPriceFlag,
 		configFileFlag,
+		utils.BlockAmountReserved,
 		utils.CheckSnapshotWithMPT,
 		utils.EnableDoubleSignMonitorFlag,
 		utils.VotingEnabledFlag,
