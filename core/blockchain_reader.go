@@ -192,19 +192,19 @@ func (bc *BlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
 		log.Info("GetBlock ok", "hash", hash, "number", number, "block", block.Number())
 		return block
 	}
-	log.Info("GetBlock", "hash", hash, "number", number, "mark 1")
+	log.Info("GetBlock mark 1", "hash", hash, "number", number)
 	block := rawdb.ReadBlock(bc.db, hash, number)
 	if block == nil {
 		return nil
 	}
-	log.Info("GetBlock", "hash", hash, "number", number, "mark 2")
+	log.Info("GetBlock mark 2", "hash", hash, "number", number)
 	sidecars := rawdb.ReadBlobSidecars(bc.db, hash, number)
-	log.Info("GetBlock", "hash", hash, "number", number, "mark 3")
+	log.Info("GetBlock mark 3", "hash", hash, "number", number)
 	block = block.WithSidecars(sidecars)
-	log.Info("GetBlock", "hash", hash, "number", number, "mark 3.1")
+	log.Info("GetBlock mark 4", "hash", hash, "number", number)
 	// Cache the found block for next time and return
 	bc.blockCache.Add(block.Hash(), block)
-	log.Info("GetBlock", "hash", hash, "number", number, "mark 4")
+	log.Info("GetBlock mark 5", "hash", hash, "number", number)
 	return block
 }
 
