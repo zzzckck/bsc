@@ -432,13 +432,13 @@ func (f *BlockFetcher) loop() {
 			}
 			// If we have a valid block number, check that it's potentially useful
 			if dist := int64(notification.number) - int64(f.chainHeight()); dist < -maxUncleDist || dist > maxQueueDist {
-				log.Debug("Peer discarded announcement by distance", "peer", notification.origin, "number", notification.number, "hash", notification.hash, "distance", dist)
+				// log.Debug("Peer discarded announcement by distance", "peer", notification.origin, "number", notification.number, "hash", notification.hash, "distance", dist)
 				blockAnnounceDropMeter.Mark(1)
 				break
 			}
 			finalized := f.chainFinalizedHeight()
 			if notification.number <= finalized {
-				log.Debug("Peer discarded announcement by finality", "peer", notification.origin, "number", notification.number, "hash", notification.hash, "finalized", finalized)
+				//log.Debug("Peer discarded announcement by finality", "peer", notification.origin, "number", notification.number, "hash", notification.hash, "finalized", finalized)
 				blockAnnounceDropMeter.Mark(1)
 				break
 			}
@@ -842,14 +842,14 @@ func (f *BlockFetcher) enqueue(peer string, header *types.Header, block *types.B
 	// Ensure the peer isn't DOSing us
 	count := f.queues[peer] + 1
 	if count > blockLimit {
-		log.Debug("Discarded delivered header or block, exceeded allowance", "peer", peer, "number", number, "hash", hash, "limit", blockLimit)
+		// log.Debug("Discarded delivered header or block, exceeded allowance", "peer", peer, "number", number, "hash", hash, "limit", blockLimit)
 		blockBroadcastDOSMeter.Mark(1)
 		f.forgetHash(hash)
 		return
 	}
 	// Discard any past or too distant blocks
 	if dist := int64(number) - int64(f.chainHeight()); dist < -maxUncleDist || dist > maxQueueDist {
-		log.Debug("Discarded delivered header or block, too far away", "peer", peer, "number", number, "hash", hash, "distance", dist)
+		//log.Debug("Discarded delivered header or block, too far away", "peer", peer, "number", number, "hash", hash, "distance", dist)
 		blockBroadcastDropMeter.Mark(1)
 		f.forgetHash(hash)
 		return
@@ -857,7 +857,7 @@ func (f *BlockFetcher) enqueue(peer string, header *types.Header, block *types.B
 	// Discard any block that is below the current finalized height
 	finalizedHeight := f.chainFinalizedHeight()
 	if number <= finalizedHeight {
-		log.Debug("Discarded delivered header or block, below or equal to finalized", "peer", peer, "number", number, "hash", hash, "finalized", finalizedHeight)
+		//log.Debug("Discarded delivered header or block, below or equal to finalized", "peer", peer, "number", number, "hash", hash, "finalized", finalizedHeight)
 		blockBroadcastDropMeter.Mark(1)
 		f.forgetHash(hash)
 		return

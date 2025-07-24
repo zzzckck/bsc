@@ -2122,13 +2122,14 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 
 	// Track the singleton witness from this chain insertion (if any)
 	var witness *stateless.Witness
-
+	log.Info("insertChain", "block", block.Number(), "len", len(chain))
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
 		// If the chain is terminating, stop processing blocks
 		if bc.insertStopped() {
 			log.Debug("Abort during block processing")
 			break
 		}
+		log.Info("insertChain", "block", block.Number(), "hash", block.Hash())
 		// If the block is known (in the middle of the chain), it's a special case for
 		// Clique blocks where they can share state among each other, so importing an
 		// older block might complete the state of the subsequent one. In this case,
@@ -2181,7 +2182,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		if parent == nil {
 			parent = bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
 		}
-
+		log.Info("insertChain mark 1")
 		statedb, err := state.NewWithSharedPool(parent.Root, bc.statedb)
 		if err != nil {
 			return nil, it.index, err
@@ -2189,7 +2190,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		statedb.EnableSharedStorage(bc.cacheConfig.EnableSharedStorage)
 		statedb.SetNeedBadSharedStorage(bc.chainConfig.NeedBadSharedStorage(block.Number()))
 		bc.updateHighestVerifiedHeader(block.Header())
-
+		log.Info("insertChain mark 2")
 		// If we are past Byzantium, enable prefetching to pull in trie node paths
 		// while processing transactions. Before Byzantium the prefetcher is mostly
 		// useless due to the intermediate root hashing after each transaction.
@@ -2205,7 +2206,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			}
 			statedb.StartPrefetcher("chain", witness)
 		}
-
+		log.Info("insertChain mark 3")
 		interruptCh := make(chan struct{})
 		// For diff sync, it may fallback to full sync, so we still do prefetch
 		if !bc.cacheConfig.TrieCleanNoPrefetch && len(block.Transactions()) >= prefetchTxNumber {
@@ -2222,14 +2223,14 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			// trie prefetcher is thread safe now, ok to prefetch in a separate routine
 			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
-
+		log.Info("insertChain mark 4")
 		// The traced section of block import.
 		res, err := bc.processBlock(block, statedb, start, setHead, interruptCh)
 		if err != nil {
 			return nil, it.index, err
 		}
 		bc.GetBlockStats(block.Hash()).ImportedBlockTime.Store(time.Now().UnixMilli())
-
+		log.Info("insertChain mark 5")
 		// Report the import stats before returning the various results
 		stats.processed++
 		stats.usedGas += res.usedGas
@@ -2240,7 +2241,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 		}
 		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
 		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, res.status == CanonStatTy)
-
+		log.Info("insertChain mark 6")
 		if !setHead {
 			// After merge we expect few side chains. Simply count
 			// all blocks the CL gives us for GC processing time
@@ -2273,7 +2274,9 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 				"txs", len(block.Transactions()), "gas", block.GasUsed(), "uncles", len(block.Uncles()),
 				"root", block.Root())
 		}
+		log.Info("insertChain mark 7")
 		bc.chainBlockFeed.Send(ChainHeadEvent{block.Header()})
+		log.Info("insertChain mark 8")
 	}
 
 	// Any blocks remaining here? The only ones we care about are the future ones
