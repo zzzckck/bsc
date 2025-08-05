@@ -2216,7 +2216,11 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 
 		interruptCh := make(chan struct{})
 		// For diff sync, it may fallback to full sync, so we still do prefetch
-		if !bc.cacheConfig.TrieCleanNoPrefetch && len(block.Transactions()) >= prefetchTxNumber {
+		if block.BAL() != nil {
+			// TODO: add BAL to the block
+			throwawayBAL := statedb.CopyDoPrefetch()
+			bc.prefetcher.PrefetchBAL(block, throwawayBAL, interruptCh)
+		} else if !bc.cacheConfig.TrieCleanNoPrefetch && len(block.Transactions()) >= prefetchTxNumber {
 			// do Prefetch in a separate goroutine to avoid blocking the critical path
 			// 1.do state prefetch for snapshot cache
 			throwaway := statedb.CopyDoPrefetch()
@@ -2231,9 +2235,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
-		// TODO: add BAL to the block
-		throwawayBAL := statedb.CopyDoPrefetch()
-		bc.prefetcher.PrefetchBAL(block, throwawayBAL, interruptCh)
 		// The traced section of block import.
 		res, err := bc.processBlock(block, statedb, start, setHead, interruptCh)
 		if err != nil {
