@@ -24,6 +24,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -303,10 +304,19 @@ func (p *Peer) AsyncSendNewBlockHash(block *types.Block) {
 func (p *Peer) SendNewBlock(block *types.Block, td *big.Int) error {
 	// Mark all the block hash as known, but ensure we don't overflow our limits
 	p.knownBlocks.Add(block.Hash())
+	bal := block.BAL()
+	if bal != nil {
+		log.Debug("SendNewBlock", "number", block.NumberU64(), "hash", block.Hash(), "balSize", block.BALSize(), "version", bal.Version, "canHandleBAL", p.CanHandleBAL.Load())
+	}
+	if !p.CanHandleBAL.Load() {
+		bal = nil
+	}
+
 	return p2p.Send(p.rw, NewBlockMsg, &NewBlockPacket{
 		Block:    block,
 		TD:       td,
 		Sidecars: block.Sidecars(),
+		Bal:      bal,
 	})
 }
 

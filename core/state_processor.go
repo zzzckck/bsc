@@ -74,9 +74,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	)
 
 	txNum := len(block.Transactions())
-	if !debug.Handler.EnableTraceCapture(block.Header().Number.Uint64(), "") {
-		debug.Handler.EnableTraceBigBlock(block.Header().Number.Uint64(), txNum, "")
-	}
 	log.Info("Process", "block", block.Header().Number)
 	traceMsg := "Process " + block.Header().Number.String()
 	defer debug.Handler.StartRegionAuto(traceMsg)()
@@ -187,7 +184,10 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
-
+	statedb.DumpAccessList(block)
+	// bal := block.BAL()
+	// block.UpdateBAL(bal)
+	// log.Info("Process", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size(noBal)", block.Size(), "balSize", block.BALSize())
 	return &ProcessResult{
 		Receipts: receipts,
 		Requests: requests,

@@ -119,6 +119,7 @@ func (env *environment) copy() *environment {
 		header:   types.CopyHeader(env.header),
 		receipts: copyReceipts(env.receipts),
 	}
+	env.state.TransferBAL(cpy.state)
 	if env.gasPool != nil {
 		gasPool := *env.gasPool
 		cpy.gasPool = &gasPool
@@ -452,12 +453,15 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
+			enableMinerTrace := false
 			mockBlockNum := uint64(1)
-			debug.Handler.EnableTraceBigBlock(mockBlockNum, 0, "") // to disable trace, set blockNum to 0
+			if enableMinerTrace {
+				debug.Handler.EnableTraceBigBlock(mockBlockNum, 0, "") // to disable trace, set blockNum to 0
+			}
 
 			// if next block is my turn, enable trace
 			difficulty := w.engine.CalcDifficulty(w.chain, 0, head.Header)
-			if difficulty != nil && difficulty.Cmp(diffInTurn) == 0 {
+			if enableMinerTrace && difficulty != nil && difficulty.Cmp(diffInTurn) == 0 {
 				log.Info("Next is my turn, try to enable trace", "block", head.Header.Number.Uint64()+1)
 				mockTxNum := 10000
 				debug.Handler.EnableTraceBigBlock(head.Header.Number.Uint64()+1, mockTxNum, "")
@@ -979,6 +983,7 @@ LOOP:
 			coalescedLogs = append(coalescedLogs, logs...)
 			env.tcount++
 			txs.Shift()
+			// update the BAL metedata
 
 		default:
 			// Transaction is regarded as invalid, drop all consecutive transactions from
@@ -1542,7 +1547,12 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		env := env.copy()
 
 		block = block.WithSidecars(env.sidecars)
-
+		bal := env.state.GetBlockAccessList(block)
+		if bal != nil && w.engine.SignBAL(bal) == nil {
+			block = block.WithBAL(bal)
+		}
+		env.state.DumpAccessList(block)
+		log.Info("worker Commit", "blockNumber", block.NumberU64(), "GasUsed", block.GasUsed(), "block size(noBal)", block.Size(), "balSize", block.BALSize())
 		select {
 		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),

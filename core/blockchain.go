@@ -1072,6 +1072,7 @@ func (bc *BlockChain) setHeadBeyondRoot(head uint64, time uint64, root common.Ha
 			rawdb.DeleteBody(db, hash, num)
 			rawdb.DeleteBlobSidecars(db, hash, num)
 			rawdb.DeleteReceipts(db, hash, num)
+			rawdb.DeleteBAL(db, hash, num)
 		}
 		// Todo(rjl493456442) txlookup, bloombits, etc
 	}
@@ -1746,6 +1747,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 		if bc.chainConfig.IsCancun(block.Number(), block.Time()) {
 			rawdb.WriteBlobSidecars(blockBatch, block.Hash(), block.NumberU64(), block.Sidecars())
 		}
+		rawdb.WriteBAL(blockBatch, block.Hash(), block.NumberU64(), block.BAL())
 		if bc.db.HasSeparateStateStore() {
 			rawdb.WritePreimages(bc.db.GetStateStore(), statedb.Preimages())
 		} else {
@@ -2211,7 +2213,14 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool, makeWitness 
 
 		interruptCh := make(chan struct{})
 		// For diff sync, it may fallback to full sync, so we still do prefetch
-		if !bc.cacheConfig.TrieCleanNoPrefetch && len(block.Transactions()) >= prefetchTxNumber {
+		debug.Handler.RpcDisableTraceCapture()
+		debug.Handler.EnableTraceCapture(block.Header().Number.Uint64(), "") // trace with range is for both curPrefetch and BALPefetch
+		if block.BAL() != nil {
+			debug.Handler.EnableTraceBigBlock(block.Header().Number.Uint64(), len(block.Transactions()), "bal") // EnableTraceBigBlock is only for BALPrefetch
+			// TODO: add BAL to the block
+			throwawayBAL := statedb.CopyDoPrefetch()
+			bc.prefetcher.PrefetchBAL(block, throwawayBAL, interruptCh)
+		} else if !bc.cacheConfig.TrieCleanNoPrefetch && len(block.Transactions()) >= prefetchTxNumber {
 			// do Prefetch in a separate goroutine to avoid blocking the critical path
 			// 1.do state prefetch for snapshot cache
 			throwaway := statedb.CopyDoPrefetch()
