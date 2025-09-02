@@ -661,6 +661,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		tds                stat
 		numHashPairings    stat
 		blobSidecars       stat
+		bals               stat
 		hashNumPairings    stat
 		legacyTries        stat
 		stateLookups       stat
@@ -717,6 +718,8 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 			tds.Add(size)
 		case bytes.HasPrefix(key, BlockBlobSidecarsPrefix):
 			blobSidecars.Add(size)
+		case bytes.HasPrefix(key, BlockBALPrefix):
+			bals.Add(size)
 		case bytes.HasPrefix(key, headerPrefix) && bytes.HasSuffix(key, headerHashSuffix):
 			numHashPairings.Add(size)
 		case bytes.HasPrefix(key, headerNumberPrefix) && len(key) == (len(headerNumberPrefix)+common.HashLength):
@@ -851,6 +854,7 @@ func InspectDatabase(db ethdb.Database, keyPrefix, keyStart []byte) error {
 		{"Key-Value store", "Receipt lists", receipts.Size(), receipts.Count()},
 		{"Key-Value store", "Difficulties", tds.Size(), tds.Count()},
 		{"Key-Value store", "BlobSidecars", blobSidecars.Size(), blobSidecars.Count()},
+		{"Key-Value store", "Block access list", bals.Size(), bals.Count()},
 		{"Key-Value store", "Block number->hash", numHashPairings.Size(), numHashPairings.Count()},
 		{"Key-Value store", "Block hash->number", hashNumPairings.Size(), hashNumPairings.Count()},
 		{"Key-Value store", "Transaction index", txLookups.Size(), txLookups.Count()},
